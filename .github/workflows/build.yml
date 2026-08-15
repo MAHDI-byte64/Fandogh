@@ -1,0 +1,98 @@
+name: Build Fandogh APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/android-boghlamyooz-client-20kyx0
+    paths-ignore:
+      - '**.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+
+      - name: Install NDK
+        run: |
+          echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --channel=0 --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      # The native tun library is built from the hev-socks5-tunnel submodule.
+      # Cached because an NDK build across four ABIs costs several minutes.
+      - name: Restore cached libhevtun
+        id: cache-libhevtun
+        uses: actions/cache@v4
+        with:
+          path: libs
+          key: libhevtun-${{ runner.os }}-ndk29.0.14206865-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD', 'compile-hevtun.sh') }}
+
+      - name: Build libhevtun
+        if: steps.cache-libhevtun.outputs.cache-hit != 'true'
+        run: bash compile-hevtun.sh
+
+      - name: Stage libhevtun into the app module
+        run: cp -r libs V2rayNG/app/
+
+      # libv2ray.aar is the Xray core, published as a release asset by the
+      # AndroidLibXrayLite submodule. The tag is read from the pinned submodule
+      # so the core never drifts out of sync with the checked-out source.
+      - name: Resolve libv2ray tag
+        run: |
+          TAG=$(git -C AndroidLibXrayLite describe --tags --abbrev=0)
+          echo "Using AndroidLibXrayLite tag: $TAG"
+          echo "XRAY_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Download libv2ray.aar
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p V2rayNG/app/libs
+          gh release download "$XRAY_TAG" \
+            --repo 2dust/AndroidLibXrayLite \
+            --pattern 'libv2ray.aar' \
+            --dir V2rayNG/app/libs
+          ls -la V2rayNG/app/libs
+
+      - name: Build debug APK
+        run: |
+          cd V2rayNG
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew assemblePlaystoreDebug --no-daemon --stacktrace
+
+      - name: List built APKs
+        run: find V2rayNG/app/build/outputs/apk -name '*.apk' -exec ls -lh {} +
+
+      # Debug APKs are signed with the standard Android debug key, so they
+      # install on a phone as-is. Swap in a real keystore before distributing.
+      - name: Upload APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fandogh-apk
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*.apk
+          if-no-files-found: error
