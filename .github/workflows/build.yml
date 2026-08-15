@@ -89,10 +89,38 @@ jobs:
 
       # Debug APKs are signed with the standard Android debug key, so they
       # install on a phone as-is. Swap in a real keystore before distributing.
-      - name: Upload APKs
+      #
+      # One artifact per ABI rather than one combined zip: GitHub serves an
+      # artifact as a single archive, so a combined upload would force a ~245 MB
+      # download to get the one ~39 MB APK a given phone actually needs.
+      - name: Upload arm64-v8a APK (most phones)
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Fandogh-apk
-          path: V2rayNG/app/build/outputs/apk/playstore/debug/*.apk
+          name: Fandogh-arm64-v8a
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*arm64-v8a*.apk
+          if-no-files-found: error
+
+      - name: Upload armeabi-v7a APK (older 32-bit phones)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fandogh-armeabi-v7a
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*armeabi-v7a*.apk
+          if-no-files-found: error
+
+      - name: Upload universal APK (any device, larger)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fandogh-universal
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*universal*.apk
+          if-no-files-found: error
+
+      - name: Upload x86 APKs (emulator)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fandogh-x86
+          path: V2rayNG/app/build/outputs/apk/playstore/debug/*x86*.apk
           if-no-files-found: error
