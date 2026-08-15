@@ -1,7 +1,6 @@
 package com.v2ray.ang.ui.fandogh
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -89,11 +87,7 @@ private fun HomeHeader(onOpenSettings: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.mipmap.ic_launcher),
-            contentDescription = null,
-            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp))
-        )
+        FandoghLogo(Modifier.size(44.dp))
         Spacer(Modifier.size(12.dp))
         Text(
             text = stringResource(R.string.app_name),

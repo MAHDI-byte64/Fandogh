@@ -14,7 +14,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
-import com.v2ray.ang.BuildConfig
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -453,11 +452,16 @@ object Utils {
     }
 
     /**
-     * Check if the package is Xray.
+     * Whether the bundled core is Xray.
      *
-     * @return True if the package is Xray, false otherwise.
+     * This build links AndroidLibXrayLite, so it always is. Upstream inferred this from
+     * the applicationId, which silently became wrong the moment the app was rebranded:
+     * the config builder would then add a second HTTP inbound and shift the HTTP port by
+     * one, against a core that already serves HTTP on the SOCKS port.
+     *
+     * @return True — the packaged core is Xray.
      */
-    fun isXray(): Boolean = BuildConfig.APPLICATION_ID.startsWith("com.v2ray.ang")
+    fun isXray(): Boolean = true
 
     /**
      * Converts an InetAddress to its long representation

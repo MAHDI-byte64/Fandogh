@@ -258,6 +258,78 @@ fun ConnectButton(
     }
 }
 
+/**
+ * The hazelnut mark, drawn with the same geometry as the launcher icon.
+ *
+ * Deliberately not loaded via painterResource(R.mipmap.ic_launcher): from API 26 that
+ * resource resolves to an AdaptiveIconDrawable, which Compose's painterResource cannot
+ * decode — it throws, taking the whole screen down before first frame.
+ */
+@Composable
+fun FandoghLogo(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        // Work in the icon's 108-unit design space, then scale to the drawn size.
+        val s = size.minDimension / 108f
+        fun p(x: Float, y: Float) = Offset(x * s, y * s)
+
+        val corner = androidx.compose.ui.geometry.CornerRadius(24f * s, 24f * s)
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF1B3358), Color(0xFF122744), Color(0xFF0A1526)),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height)
+            ),
+            size = size,
+            cornerRadius = corner
+        )
+
+        val nut = Path().apply {
+            moveTo(54 * s, 30 * s)
+            cubicTo(69 * s, 30 * s, 80 * s, 43 * s, 80 * s, 59 * s)
+            cubicTo(80 * s, 75 * s, 68 * s, 87 * s, 54 * s, 87 * s)
+            cubicTo(40 * s, 87 * s, 28 * s, 75 * s, 28 * s, 59 * s)
+            cubicTo(28 * s, 43 * s, 39 * s, 30 * s, 54 * s, 30 * s)
+            close()
+        }
+        drawPath(
+            nut,
+            Brush.linearGradient(
+                colors = listOf(Color(0xFFF0B978), Color(0xFFD98F45), Color(0xFFA25F27)),
+                start = p(28f, 32f),
+                end = p(80f, 87f)
+            )
+        )
+
+        val husk = Path().apply {
+            moveTo(28 * s, 44 * s)
+            cubicTo(28 * s, 33 * s, 39 * s, 24 * s, 54 * s, 24 * s)
+            cubicTo(69 * s, 24 * s, 80 * s, 33 * s, 80 * s, 44 * s)
+            var x = 80f
+            repeat(4) {
+                quadraticTo((x - 6.5f) * s, 51.5f * s, (x - 13f) * s, 44 * s)
+                x -= 13f
+            }
+            close()
+        }
+        drawPath(
+            husk,
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF3FD9A0), Color(0xFF2BB6B4), Color(0xFF2E8FE0)),
+                start = p(28f, 24f),
+                end = p(80f, 51f)
+            )
+        )
+
+        val stem = Path().apply {
+            moveTo(52 * s, 27 * s)
+            cubicTo(51 * s, 21 * s, 52 * s, 17 * s, 55 * s, 14 * s)
+            cubicTo(58 * s, 17 * s, 57 * s, 23 * s, 56 * s, 27 * s)
+            close()
+        }
+        drawPath(stem, Color(0xFF2E8FE0))
+    }
+}
+
 /** Shield outline drawn directly so the icon needs no extended-icons dependency. */
 @Composable
 fun ShieldGlyph(color: Color, filled: Boolean, modifier: Modifier = Modifier) {
