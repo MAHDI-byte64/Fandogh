@@ -540,4 +540,39 @@
     <string name="connection_test_empty_message">جزئیاتی در دسترس نیست</string>
     <string name="value_unknown">ناشناخته</string>
 
+
+    <!-- Fandogh UI -->
+    <string name="fandogh_connect">اتصال</string>
+    <string name="fandogh_disconnect">قطع</string>
+    <string name="fandogh_connected">متصل</string>
+    <string name="fandogh_disconnected">قطع شده</string>
+    <string name="fandogh_tap_to_connect">برای اتصال ضربه بزنید</string>
+    <string name="fandogh_protocol">پروتکل</string>
+    <string name="fandogh_no_server">سروری انتخاب نشده</string>
+    <string name="fandogh_no_server_hint">برای انتخاب ضربه بزنید</string>
+    <string name="fandogh_home">خانه</string>
+    <string name="fandogh_stats">آمار</string>
+    <string name="fandogh_profile">پروفایل</string>
+    <string name="fandogh_stats_subtitle">داده‌هایتان کجا رفت</string>
+    <string name="fandogh_profile_subtitle">حساب و سرورهای شما</string>
+    <string name="fandogh_data_usage">مصرف داده</string>
+    <string name="fandogh_today">امروز</string>
+    <string name="fandogh_upload">آپلود</string>
+    <string name="fandogh_download">دانلود</string>
+    <string name="fandogh_total">کل</string>
+    <string name="fandogh_used">مصرف‌شده</string>
+    <string name="fandogh_live_speed">سرعت لحظه‌ای</string>
+    <string name="fandogh_subscriptions">اشتراک‌ها</string>
+    <string name="fandogh_subscriptions_hint">افزودن یا به‌روزرسانی لینک اشتراک</string>
+    <string name="fandogh_server_list">سرورها</string>
+    <string name="fandogh_server_list_hint">مرور، تست و انتخاب سرور</string>
+    <string name="fandogh_about">درباره</string>
+    <string name="fandogh_about_hint">نسخه و مجوزها</string>
+    <string name="fandogh_plan_active">اشتراک فعال</string>
+    <string name="fandogh_plan_active_hint">سهمیه اعلام‌شده توسط پنل شما</string>
+    <string name="fandogh_plan_unknown">سهمیه‌ای گزارش نشده</string>
+    <string name="fandogh_plan_unknown_hint">پنل شما اطلاعات مصرف نفرستاد</string>
+    <string name="fandogh_your_data">داده شما</string>
+    <string name="fandogh_measured_usage">اندازه‌گیری‌شده روی این دستگاه</string>
+    <string name="fandogh_data_left">%1$s از %2$s باقی‌مانده</string>
 </resources>

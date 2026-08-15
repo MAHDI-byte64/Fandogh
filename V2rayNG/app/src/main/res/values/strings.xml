@@ -540,4 +540,39 @@
     <string name="connection_test_empty_message">no details available</string>
     <string name="value_unknown">unknown</string>
 
+
+    <!-- Fandogh UI -->
+    <string name="fandogh_connect">Connect</string>
+    <string name="fandogh_disconnect">Disconnect</string>
+    <string name="fandogh_connected">Connected</string>
+    <string name="fandogh_disconnected">Disconnected</string>
+    <string name="fandogh_tap_to_connect">Tap to connect</string>
+    <string name="fandogh_protocol">Protocol</string>
+    <string name="fandogh_no_server">No server selected</string>
+    <string name="fandogh_no_server_hint">Tap to choose one</string>
+    <string name="fandogh_home">Home</string>
+    <string name="fandogh_stats">Stats</string>
+    <string name="fandogh_profile">Profile</string>
+    <string name="fandogh_stats_subtitle">Where your data went</string>
+    <string name="fandogh_profile_subtitle">Your account and servers</string>
+    <string name="fandogh_data_usage">Data usage</string>
+    <string name="fandogh_today">Today</string>
+    <string name="fandogh_upload">Upload</string>
+    <string name="fandogh_download">Download</string>
+    <string name="fandogh_total">Total</string>
+    <string name="fandogh_used">Used</string>
+    <string name="fandogh_live_speed">Live speed</string>
+    <string name="fandogh_subscriptions">Subscriptions</string>
+    <string name="fandogh_subscriptions_hint">Add or refresh your subscription links</string>
+    <string name="fandogh_server_list">Servers</string>
+    <string name="fandogh_server_list_hint">Browse, test and pick a server</string>
+    <string name="fandogh_about">About</string>
+    <string name="fandogh_about_hint">Version and licences</string>
+    <string name="fandogh_plan_active">Subscription active</string>
+    <string name="fandogh_plan_active_hint">Quota reported by your panel</string>
+    <string name="fandogh_plan_unknown">No quota reported</string>
+    <string name="fandogh_plan_unknown_hint">Your panel did not send usage info</string>
+    <string name="fandogh_your_data">Your data</string>
+    <string name="fandogh_measured_usage">Measured on this device</string>
+    <string name="fandogh_data_left">%1$s of %2$s left</string>
 </resources>

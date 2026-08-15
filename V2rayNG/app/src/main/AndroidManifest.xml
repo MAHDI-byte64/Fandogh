@@ -61,8 +61,9 @@
                 android:value="true" />
         </service>
 
+        <!-- Fandogh's own front end is the launcher entry point. -->
         <activity
-            android:name=".ui.main.MainActivity"
+            android:name=".ui.fandogh.FandoghActivity"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -79,6 +80,15 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <!--
+          The classic server list stays available for subscription and profile
+          management; the Profile tab links here. No longer a launcher entry.
+        -->
+        <activity
+            android:name=".ui.main.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
         <activity
             android:name=".ui.server.ServerVmessActivity"
             android:exported="false"
