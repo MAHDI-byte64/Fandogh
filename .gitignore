@@ -1,0 +1,19 @@
+*.iml
+.gradle/
+.idea/
+build/
+local.properties
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Native artifacts produced by compile-hevtun.sh
+/libs/
+V2rayNG/app/libs/*.aar
+V2rayNG/app/libs/*/
+
+# Signing material — never commit these
+*.jks
+*.keystore
+keystore.properties

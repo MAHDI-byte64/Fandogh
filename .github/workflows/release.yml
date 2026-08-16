@@ -1,0 +1,146 @@
+name: Release Fandogh
+
+# Produces signed release APKs and publishes them as a GitHub Release.
+#
+# Why a Release and not the build workflow's artifacts: Actions artifacts can only be
+# downloaded by someone signed in to GitHub with access to the repository, and they
+# expire. Release assets are plain permanent URLs anyone can open, which is what
+# handing the app to users actually requires.
+#
+# Trigger by pushing a tag (git tag v1.0.0 && git push origin v1.0.0) or by running
+# the workflow manually and typing the tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.0.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF#refs/tags/}"; fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Releasing $TAG"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+
+      - name: Install NDK
+        run: |
+          echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            --channel=0 --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Restore cached libhevtun
+        id: cache-libhevtun
+        uses: actions/cache@v4
+        with:
+          path: libs
+          key: libhevtun-${{ runner.os }}-ndk29.0.14206865-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD', 'compile-hevtun.sh') }}
+
+      - name: Build libhevtun
+        if: steps.cache-libhevtun.outputs.cache-hit != 'true'
+        run: bash compile-hevtun.sh
+
+      - name: Stage libhevtun into the app module
+        run: cp -r libs V2rayNG/app/
+
+      - name: Resolve libv2ray tag
+        run: |
+          TAG=$(git -C AndroidLibXrayLite describe --tags --abbrev=0)
+          echo "XRAY_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Download libv2ray.aar
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p V2rayNG/app/libs
+          gh release download "$XRAY_TAG" \
+            --repo 2dust/AndroidLibXrayLite \
+            --pattern 'libv2ray.aar' \
+            --dir V2rayNG/app/libs
+
+      # The keystore is stored as a base64 secret and written to a path outside the
+      # workspace, so it cannot be picked up by anything that archives the checkout.
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FANDOGH_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secret FANDOGH_KEYSTORE_BASE64 is not set. Add the signing secrets before releasing."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/fandogh-release.jks"
+          echo "FANDOGH_KEYSTORE=$RUNNER_TEMP/fandogh-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed release APKs
+        env:
+          FANDOGH_KEYSTORE_PASSWORD: ${{ secrets.FANDOGH_KEYSTORE_PASSWORD }}
+          FANDOGH_KEY_ALIAS: ${{ secrets.FANDOGH_KEY_ALIAS }}
+          FANDOGH_KEY_PASSWORD: ${{ secrets.FANDOGH_KEY_PASSWORD }}
+        run: |
+          cd V2rayNG
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          ./gradlew assemblePlaystoreRelease --no-daemon --stacktrace
+
+      # A release build without a signing config produces *-unsigned.apk, which will
+      # not install. Fail loudly here rather than publishing APKs nobody can use.
+      - name: Verify the APKs are signed
+        run: |
+          APKS=$(find V2rayNG/app/build/outputs/apk/playstore/release -name '*.apk')
+          echo "$APKS"
+          if echo "$APKS" | grep -q 'unsigned'; then
+            echo "::error::Build produced unsigned APKs — signing config was not applied."
+            exit 1
+          fi
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)
+          for apk in $APKS; do
+            echo "== $apk"
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd V2rayNG/app/build/outputs/apk/playstore/release
+          # --target pins the release to the exact commit that was just built. When the
+          # run was started manually the tag may not exist yet; this creates it there
+          # rather than silently tagging the default branch, which would publish APKs
+          # under a tag whose source is not what produced them.
+          gh release create "$RELEASE_TAG" \
+            --repo "${{ github.repository }}" \
+            --target "$GITHUB_SHA" \
+            --title "Fandogh $RELEASE_TAG" \
+            --generate-notes \
+            *.apk
