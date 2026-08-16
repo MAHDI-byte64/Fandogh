@@ -570,6 +570,8 @@
     <string name="fandogh_about_hint">Version and licences</string>
     <string name="fandogh_plan_active">Subscription active</string>
     <string name="fandogh_plan_active_hint">Quota reported by your panel</string>
+    <string name="fandogh_panel_usage">Used on your account</string>
+    <string name="fandogh_unlimited">Unlimited</string>
     <string name="fandogh_plan_unknown">No quota reported</string>
     <string name="fandogh_plan_unknown_hint">Your panel did not send usage info</string>
     <string name="fandogh_your_data">Your data</string>

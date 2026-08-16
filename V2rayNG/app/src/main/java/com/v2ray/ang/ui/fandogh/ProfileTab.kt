@@ -55,6 +55,12 @@ data class SubscriptionUsage(
     val remainingBytes: Long get() = (totalBytes - usedBytes).coerceAtLeast(0)
     val usedFraction: Float
         get() = if (totalBytes > 0) (usedBytes.toFloat() / totalBytes).coerceIn(0f, 1f) else 0f
+
+    /** Only a capped plan can be drawn as a proportion of anything. */
+    val hasQuota: Boolean get() = totalBytes > 0
+
+    /** An uncapped plan still has consumption the panel counted and the user wants. */
+    val hasCountedUsage: Boolean get() = usedBytes > 0
 }
 
 data class ProfileTabState(
@@ -176,7 +182,7 @@ private fun QuotaCard(
 
         Spacer(Modifier.height(22.dp))
 
-        if (usage != null && usage.totalBytes > 0) {
+        if (usage != null && usage.hasQuota) {
             GaugeBreakdown(
                 fraction = usage.usedFraction,
                 gaugeCenter = {
@@ -237,6 +243,30 @@ private fun QuotaCard(
             }
             Spacer(Modifier.height(10.dp))
             QuotaBar(fraction = 1f - usage.usedFraction)
+        } else if (usage != null && usage.hasCountedUsage) {
+            // Uncapped plan: there is no allowance to draw a ring against, but the panel
+            // still counted every byte, and that count is what the user came here for.
+            UsageTotal(
+                label = stringResource(R.string.fandogh_panel_usage),
+                value = formatBytesLabel(usage.usedBytes)
+            )
+            Spacer(Modifier.height(18.dp))
+            MetricRow(
+                label = stringResource(R.string.fandogh_upload),
+                value = formatBytesLabel(usage.uploadBytes),
+                accent = FandoghColors.UploadAccent,
+                markerFilled = false
+            )
+            MetricRow(
+                label = stringResource(R.string.fandogh_download),
+                value = formatBytesLabel(usage.downloadBytes),
+                accent = FandoghColors.DownloadAccent
+            )
+            MetricRow(
+                label = stringResource(R.string.fandogh_total),
+                value = stringResource(R.string.fandogh_unlimited),
+                accent = FandoghColors.TextTertiary
+            )
         } else {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -326,6 +356,29 @@ private fun SubscriptionCard(
             } else {
                 FandoghColors.CtaGradient
             }
+        )
+    }
+}
+
+/**
+ * The headline figure for an uncapped plan, where a percentage would be meaningless.
+ * The number carries the weight the gauge would otherwise have.
+ */
+@Composable
+private fun UsageTotal(label: String, value: String) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = label.uppercase(),
+            color = FandoghColors.TextSecondary,
+            fontSize = 11.sp,
+            letterSpacing = 1.1.sp
+        )
+        Text(
+            text = value,
+            color = FandoghColors.TextPrimary,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }

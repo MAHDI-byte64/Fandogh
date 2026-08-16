@@ -40,12 +40,12 @@ object SubscriptionUsageRepository {
 
     private fun loadCached(): SubscriptionUsage? {
         if (MmkvManager.decodeSettingsLong(KEY_CACHED_AT, 0) == 0L) return null
-        val total = MmkvManager.decodeSettingsLong(KEY_CACHED_TOTAL, 0)
-        if (total <= 0) return null
+        // A zero total is cached too: an unlimited account still has real consumption
+        // worth showing, it just has no allowance to measure it against.
         return SubscriptionUsage(
             uploadBytes = MmkvManager.decodeSettingsLong(KEY_CACHED_UPLOAD, 0),
             downloadBytes = MmkvManager.decodeSettingsLong(KEY_CACHED_DOWNLOAD, 0),
-            totalBytes = total,
+            totalBytes = MmkvManager.decodeSettingsLong(KEY_CACHED_TOTAL, 0),
             expiryEpochSeconds = MmkvManager.decodeSettingsLong(KEY_CACHED_EXPIRE, 0)
         )
     }
@@ -135,12 +135,14 @@ object SubscriptionUsageRepository {
             }
             .toMap()
 
-        // Without a total there is no allowance to draw a gauge against.
-        val total = fields["total"] ?: return null
+        // A missing total means an unlimited account, not a missing answer: panels set
+        // total=0, or omit it, when no data cap is configured. Only a header with none
+        // of the four fields is genuinely nothing to report.
+        if (fields.isEmpty()) return null
         return SubscriptionUsage(
             uploadBytes = fields["upload"] ?: 0,
             downloadBytes = fields["download"] ?: 0,
-            totalBytes = total,
+            totalBytes = fields["total"] ?: 0,
             expiryEpochSeconds = fields["expire"] ?: 0
         )
     }
