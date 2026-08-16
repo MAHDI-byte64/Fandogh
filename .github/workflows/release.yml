@@ -134,8 +134,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd V2rayNG/app/build/outputs/apk/playstore/release
+          # --target pins the release to the exact commit that was just built. When the
+          # run was started manually the tag may not exist yet; this creates it there
+          # rather than silently tagging the default branch, which would publish APKs
+          # under a tag whose source is not what produced them.
           gh release create "$RELEASE_TAG" \
             --repo "${{ github.repository }}" \
+            --target "$GITHUB_SHA" \
             --title "Fandogh $RELEASE_TAG" \
             --generate-notes \
             *.apk
