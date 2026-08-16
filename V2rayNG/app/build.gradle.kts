@@ -18,8 +18,11 @@ android {
         applicationId = "ir.fandogh.vpn"
         minSdk = 24
         targetSdk = 37
-        versionCode = 744
-        versionName = "2.3.4"
+        // Fandogh's own version line, not the upstream v2rayNG numbering it was forked
+        // from. Bump versionCode on every public release — Android refuses to install
+        // an APK whose versionCode is not greater than the installed one.
+        versionCode = 1
+        versionName = "1.0.0"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
@@ -43,13 +46,40 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing is read from the environment so the keystore never enters the
+    // repository. CI writes it out from an encrypted secret; a local build points at
+    // its own copy. When nothing is configured the release build is left unsigned
+    // rather than falling back to the debug key, because the debug key is public and
+    // anyone could then forge an update to this app.
+    val keystorePath = System.getenv("FANDOGH_KEYSTORE").orEmpty()
+    val hasSigningConfig = keystorePath.isNotBlank() && file(keystorePath).exists()
+
+    signingConfigs {
+        if (hasSigningConfig) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("FANDOGH_KEYSTORE_PASSWORD").orEmpty()
+                keyAlias = System.getenv("FANDOGH_KEY_ALIAS").orEmpty()
+                keyPassword = System.getenv("FANDOGH_KEY_PASSWORD").orEmpty()
+                // Scheme v2/v3 are on by default and minSdk is 24, so the v1 JAR
+                // signature every device below Android 7 would need is not required.
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Left off deliberately: the config and DTO layers are deserialised by
+            // reflection through Gson, and R8 renaming those fields silently produces
+            // configs the core rejects at runtime. Upstream v2rayNG ships the same way.
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
