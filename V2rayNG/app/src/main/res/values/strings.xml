@@ -622,4 +622,9 @@
     <string name="fandogh_session">Session</string>
     <string name="fandogh_subscription_empty">No servers came back — check the link</string>
     <string name="fandogh_subscription_saved_count">%1$d servers imported</string>
+    <!-- Server picker -->
+    <string name="fandogh_testing">Testing…</string>
+    <string name="fandogh_search_servers">Search servers</string>
+    <string name="fandogh_go_to_profile">Add subscription</string>
+    <string name="fandogh_no_matches">Nothing matches "%1$s"</string>
 </resources>

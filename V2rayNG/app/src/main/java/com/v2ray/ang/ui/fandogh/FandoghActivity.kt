@@ -168,9 +168,12 @@ class FandoghActivity : BaseComponentActivity() {
             val profile = remember(uiState.selectedGuid) {
                 uiState.selectedGuid?.let { MmkvManager.decodeServerConfig(it) }
             }
-            val servers by mainViewModel
-                .serversForGroup(uiState.selectedGroupId)
-                .collectAsStateWithLifecycle()
+            // Straight from storage rather than the view model's per-group flow: that
+            // flow is filled by an async load behind a cache, so right after an import it
+            // is still empty and the picker showed "no servers" for servers that existed.
+            val servers = remember(uiState.selectedGroupId, uiState.selectedGuid, uiState.groups, showPicker) {
+                pickableServers(uiState.selectedGroupId)
+            }
 
             val homeState = HomeState(
                 connected = uiState.isRunning,
@@ -312,18 +315,9 @@ class FandoghActivity : BaseComponentActivity() {
 
                 if (showPicker) {
                     ServerPickerSheet(
-                        servers = servers.map {
-                            PickableServer(
-                                guid = it.guid,
-                                name = it.profile.remarks.ifBlank {
-                                    it.profile.server.orEmpty()
-                                },
-                                protocol = it.profile.configType.name,
-                                address = it.profile.server.orEmpty(),
-                                delayMillis = it.testDelayMillis
-                            )
-                        },
+                        servers = servers,
                         selectedGuid = uiState.selectedGuid,
+                        testing = uiState.isTesting,
                         onSelect = { guid ->
                             mainViewModel.onAction(MainAction.SelectServer(guid))
                             showPicker = false
@@ -333,10 +327,37 @@ class FandoghActivity : BaseComponentActivity() {
                             }
                         },
                         onTestAll = { mainViewModel.onAction(MainAction.TestAllServers) },
+                        onAddSubscription = {
+                            showPicker = false
+                            tab = 2
+                        },
                         onDismiss = { showPicker = false }
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Servers for the picker.
+     *
+     * Falls back to every stored server when the selected group has none, so a stale or
+     * empty group selection cannot hide profiles the user has actually imported.
+     */
+    private fun pickableServers(groupId: String): List<PickableServer> {
+        val guids = MmkvManager.decodeServerList(groupId)
+            .takeIf { groupId.isNotEmpty() && it.isNotEmpty() }
+            ?: MmkvManager.decodeAllServerList()
+
+        return guids.mapNotNull { guid ->
+            val profile = MmkvManager.decodeServerConfig(guid) ?: return@mapNotNull null
+            PickableServer(
+                guid = guid,
+                name = profile.remarks.ifBlank { profile.server.orEmpty() },
+                protocol = profile.configType.name,
+                address = profile.server.orEmpty(),
+                delayMillis = MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L
+            )
         }
     }
 
@@ -462,31 +483,45 @@ class FandoghActivity : BaseComponentActivity() {
 @Composable
 private fun FandoghBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    Row(
-        modifier = Modifier
+    Column(
+        Modifier
             .fillMaxWidth()
-            .background(Color(0xFF060D1A).copy(alpha = 0.92f))
-            .padding(top = 10.dp, bottom = bottomInset + 10.dp, start = 18.dp, end = 18.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .background(Color(0xFF060D1A).copy(alpha = 0.94f))
     ) {
-        BottomBarItem(
-            label = stringResource(R.string.fandogh_home),
-            selected = selected == 0,
-            onClick = { onSelect(0) }
-        ) { tint -> HomeGlyph(Modifier.size(26.dp), tint) }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(FandoghColors.Border)
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = bottomInset + 8.dp, start = 10.dp, end = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomBarItem(
+                modifier = Modifier.weight(1f),
+                label = stringResource(R.string.fandogh_home),
+                selected = selected == 0,
+                onClick = { onSelect(0) }
+            ) { tint -> HomeGlyph(Modifier.size(23.dp), tint) }
 
-        BottomBarItem(
-            label = stringResource(R.string.fandogh_stats),
-            selected = selected == 1,
-            onClick = { onSelect(1) }
-        ) { tint -> BarsGlyph(Modifier.size(26.dp), tint) }
+            BottomBarItem(
+                modifier = Modifier.weight(1f),
+                label = stringResource(R.string.fandogh_stats),
+                selected = selected == 1,
+                onClick = { onSelect(1) }
+            ) { tint -> BarsGlyph(Modifier.size(23.dp), tint) }
 
-        BottomBarItem(
-            label = stringResource(R.string.fandogh_profile),
-            selected = selected == 2,
-            onClick = { onSelect(2) }
-        ) { tint -> PersonGlyph(Modifier.size(26.dp), tint) }
+            BottomBarItem(
+                modifier = Modifier.weight(1f),
+                label = stringResource(R.string.fandogh_profile),
+                selected = selected == 2,
+                onClick = { onSelect(2) }
+            ) { tint -> PersonGlyph(Modifier.size(23.dp), tint) }
+        }
     }
 }
 
@@ -495,18 +530,19 @@ private fun BottomBarItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     icon: @Composable (Color) -> Unit
 ) {
     val tint = if (selected) FandoghColors.AccentBlueBright else FandoghColors.TextTertiary
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
+        modifier = modifier
+            .clip(RoundedCornerShape(FandoghRadius.tile))
             .clickable(onClick = onClick)
             .background(
                 if (selected) FandoghColors.AccentBlue.copy(alpha = 0.14f) else Color.Transparent
             )
-            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .padding(vertical = 7.dp)
     ) {
         icon(tint)
         Spacer(Modifier.height(4.dp))

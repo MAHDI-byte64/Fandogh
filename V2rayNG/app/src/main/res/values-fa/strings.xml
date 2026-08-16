@@ -622,4 +622,9 @@
     <string name="fandogh_session">مدت اتصال</string>
     <string name="fandogh_subscription_empty">سروری برنگشت — لینک را بررسی کنید</string>
     <string name="fandogh_subscription_saved_count">%1$d سرور وارد شد</string>
+    <!-- Server picker -->
+    <string name="fandogh_testing">در حال تست…</string>
+    <string name="fandogh_search_servers">جستجوی سرور</string>
+    <string name="fandogh_go_to_profile">افزودن اشتراک</string>
+    <string name="fandogh_no_matches">چیزی با «%1$s» پیدا نشد</string>
 </resources>

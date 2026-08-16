@@ -106,66 +106,59 @@ private fun UsageCard(totals: TrafficTracker.Totals, quotaBytes: Long?) {
         }
 
         Spacer(Modifier.height(18.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            DonutGauge(fraction = fraction, modifier = Modifier.size(170.dp)) {
+        GaugeBreakdown(
+            fraction = fraction,
+            gaugeCenter = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (quotaBytes != null && quotaBytes > 0) {
                         Text(
                             text = "${(fraction * 100).toInt()}%",
                             color = FandoghColors.TextPrimary,
-                            fontSize = 38.sp,
+                            fontSize = 34.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             stringResource(R.string.fandogh_used).uppercase(),
                             color = FandoghColors.TextSecondary,
-                            fontSize = 12.sp,
-                            letterSpacing = 1.2.sp
+                            fontSize = 11.sp,
+                            letterSpacing = 1.1.sp
                         )
                     } else {
                         Text(
                             text = formatBytes(used).first,
                             color = FandoghColors.TextPrimary,
-                            fontSize = 32.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             formatBytes(used).second,
                             color = FandoghColors.TextSecondary,
-                            fontSize = 13.sp
+                            fontSize = 12.sp
                         )
                     }
-                    Text(
-                        text = formatBytesLabel(used),
-                        color = FandoghColors.AccentBlueBright,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
                 }
             }
-
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                MetricRow(
-                    label = stringResource(R.string.fandogh_upload),
-                    value = formatBytesLabel(totals.monthUp),
-                    accent = FandoghColors.UploadAccent,
-                    markerFilled = false
-                )
-                MetricRow(
-                    label = stringResource(R.string.fandogh_download),
-                    value = formatBytesLabel(totals.monthDown),
-                    accent = FandoghColors.DownloadAccent
-                )
-                if (quotaBytes != null && quotaBytes > 0) {
-                    MetricRow(
-                        label = stringResource(R.string.fandogh_total).uppercase(),
-                        value = formatBytesLabel(quotaBytes),
-                        accent = FandoghColors.TextTertiary
-                    )
-                }
-            }
+        ) {
+            MetricRow(
+                label = stringResource(R.string.fandogh_upload),
+                value = formatBytesLabel(totals.monthUp),
+                accent = FandoghColors.UploadAccent,
+                markerFilled = false
+            )
+            MetricRow(
+                label = stringResource(R.string.fandogh_download),
+                value = formatBytesLabel(totals.monthDown),
+                accent = FandoghColors.DownloadAccent
+            )
+            MetricRow(
+                label = if (quotaBytes != null && quotaBytes > 0) {
+                    stringResource(R.string.fandogh_total)
+                } else {
+                    stringResource(R.string.fandogh_used)
+                },
+                value = formatBytesLabel(quotaBytes?.takeIf { it > 0 } ?: used),
+                accent = FandoghColors.TextTertiary
+            )
         }
     }
 }

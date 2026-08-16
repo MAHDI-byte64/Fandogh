@@ -50,7 +50,7 @@ fun GlassCard(
         androidx.compose.foundation.layout.PaddingValues(20.dp),
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(FandoghRadius.card)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -78,20 +78,29 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
 
 /** Screen title plus subtitle, matching the Stats / Profile / Settings headers. */
 @Composable
-fun ScreenHeader(title: String, subtitle: String?, modifier: Modifier = Modifier) {
+fun ScreenHeader(
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+    titleSize: androidx.compose.ui.unit.TextUnit = 29.sp
+) {
     Column(modifier) {
         Text(
             text = title,
             color = FandoghColors.TextPrimary,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = titleSize,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
         if (subtitle != null) {
             Text(
                 text = subtitle,
                 color = FandoghColors.TextSecondary,
-                fontSize = 15.sp,
-                modifier = Modifier.padding(top = 4.dp)
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = FandoghSpace.xs)
             )
         }
     }
@@ -138,8 +147,8 @@ fun GradientButton(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
-            .clip(RoundedCornerShape(50))
+            .height(54.dp)
+            .clip(RoundedCornerShape(FandoghRadius.pill))
             .background(brush)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -163,7 +172,8 @@ fun ConnectButton(
     connecting: Boolean,
     label: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    diameter: androidx.compose.ui.unit.Dp = 300.dp
 ) {
     val transition = rememberInfiniteTransition(label = "connect")
     val sweep by transition.animateFloat(
@@ -183,10 +193,10 @@ fun ConnectButton(
     val accent = if (connected) FandoghColors.AccentGreen else FandoghColors.AccentBlue
 
     Box(
-        modifier = modifier.size(310.dp),
+        modifier = modifier.size(diameter),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(310.dp)) {
+        Canvas(Modifier.size(diameter)) {
             val c = Offset(size.width / 2f, size.height / 2f)
             val base = size.minDimension / 2f
 
@@ -238,20 +248,21 @@ fun ConnectButton(
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.clip(CircleShape).clickable(onClick = onClick).padding(30.dp)
+            modifier = Modifier.clip(CircleShape).clickable(onClick = onClick).padding(diameter * 0.1f)
         ) {
             ShieldGlyph(
                 color = if (connected) FandoghColors.AccentGreen else Color.White,
                 filled = connected,
-                modifier = Modifier.size(52.dp)
+                modifier = Modifier.size(diameter * 0.17f)
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(diameter * 0.045f))
             Text(
                 text = label.uppercase(),
                 color = if (connected) FandoghColors.AccentGreen else Color.White,
-                fontSize = 17.sp,
+                fontSize = if (diameter < 240.dp) 14.sp else 16.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 3.sp,
+                letterSpacing = 2.6.sp,
+                maxLines = 1,
                 textAlign = TextAlign.Center
             )
         }
@@ -485,4 +496,45 @@ fun LeadingTile(tint: Color, modifier: Modifier = Modifier, content: @Composable
         contentAlignment = Alignment.Center,
         content = { content() }
     )
+}
+
+
+/**
+ * Gauge plus its breakdown, laid out side by side when the card is wide enough and
+ * stacked when it is not. A fixed 170dp ring beside three metric rows overflows on
+ * narrow screens, which is what pushed values off the edge before.
+ */
+@Composable
+fun GaugeBreakdown(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    gaugeCenter: @Composable () -> Unit,
+    metrics: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+        val stacked = maxWidth < 330.dp
+        val gaugeSize = if (stacked) 150.dp else 160.dp
+
+        if (stacked) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                DonutGauge(fraction = fraction, modifier = Modifier.size(gaugeSize)) { gaugeCenter() }
+                Spacer(Modifier.height(FandoghSpace.lg))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(FandoghSpace.md),
+                    content = metrics
+                )
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DonutGauge(fraction = fraction, modifier = Modifier.size(gaugeSize)) { gaugeCenter() }
+                Spacer(Modifier.size(FandoghSpace.lg))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(FandoghSpace.md),
+                    content = metrics
+                )
+            }
+        }
+    }
 }

@@ -177,42 +177,41 @@ private fun QuotaCard(
         Spacer(Modifier.height(22.dp))
 
         if (usage != null && usage.totalBytes > 0) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DonutGauge(fraction = usage.usedFraction, modifier = Modifier.size(170.dp)) {
+            GaugeBreakdown(
+                fraction = usage.usedFraction,
+                gaugeCenter = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "${(usage.usedFraction * 100).toInt()}%",
                             color = FandoghColors.TextPrimary,
-                            fontSize = 38.sp,
+                            fontSize = 34.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
                             stringResource(R.string.fandogh_used).uppercase(),
                             color = FandoghColors.TextSecondary,
-                            fontSize = 12.sp,
-                            letterSpacing = 1.2.sp
+                            fontSize = 11.sp,
+                            letterSpacing = 1.1.sp
                         )
                     }
                 }
-                Spacer(Modifier.size(12.dp))
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    MetricRow(
-                        label = stringResource(R.string.fandogh_upload),
-                        value = formatBytesLabel(usage.uploadBytes),
-                        accent = FandoghColors.UploadAccent,
-                        markerFilled = false
-                    )
-                    MetricRow(
-                        label = stringResource(R.string.fandogh_download),
-                        value = formatBytesLabel(usage.downloadBytes),
-                        accent = FandoghColors.DownloadAccent
-                    )
-                    MetricRow(
-                        label = stringResource(R.string.fandogh_total),
-                        value = formatBytesLabel(usage.totalBytes),
-                        accent = FandoghColors.TextTertiary
-                    )
-                }
+            ) {
+                MetricRow(
+                    label = stringResource(R.string.fandogh_upload),
+                    value = formatBytesLabel(usage.uploadBytes),
+                    accent = FandoghColors.UploadAccent,
+                    markerFilled = false
+                )
+                MetricRow(
+                    label = stringResource(R.string.fandogh_download),
+                    value = formatBytesLabel(usage.downloadBytes),
+                    accent = FandoghColors.DownloadAccent
+                )
+                MetricRow(
+                    label = stringResource(R.string.fandogh_total),
+                    value = formatBytesLabel(usage.totalBytes),
+                    accent = FandoghColors.TextTertiary
+                )
             }
 
             Spacer(Modifier.height(20.dp))
