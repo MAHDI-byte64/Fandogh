@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
@@ -56,6 +57,7 @@ import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.main.MainAction
 import com.v2ray.ang.ui.main.MainActivity
+import com.v2ray.ang.ui.main.MainRepository
 import com.v2ray.ang.ui.main.MainStatus
 import com.v2ray.ang.ui.main.MainViewModel
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
@@ -72,7 +74,12 @@ import kotlinx.coroutines.launch
  */
 class FandoghActivity : BaseComponentActivity() {
 
-    private val mainViewModel: MainViewModel by viewModels()
+    // MainViewModel takes a MainDataSource alongside the Application, so it cannot be
+    // built by the default factory — asking for it without one throws while the activity
+    // is still starting, which is a crash before anything reaches the screen.
+    private val mainViewModel: MainViewModel by viewModels {
+        MainViewModel.Factory(application, MainRepository(application as AngApplication))
+    }
 
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
