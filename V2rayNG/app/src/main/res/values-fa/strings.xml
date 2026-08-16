@@ -612,4 +612,9 @@
     <string name="fandogh_server_count">%1$d سرور موجود</string>
     <string name="fandogh_per_app_active">%1$d اپ انتخاب شده</string>
     <string name="fandogh_expires_on">انقضا در %1$s</string>
+    <!-- Crash reporting -->
+    <string name="fandogh_crash_title">فندق متوقف شد</string>
+    <string name="fandogh_crash_subtitle">اجرای قبلی با این خطا تمام شد</string>
+    <string name="fandogh_crash_copy">کپی گزارش</string>
+    <string name="fandogh_crash_continue">ادامه</string>
 </resources>

@@ -10,6 +10,7 @@ import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.handler.AppLocaleManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.compose.ThemeManager
+import com.v2ray.ang.ui.fandogh.CrashReporter
 
 class AngApplication : Application() {
     companion object {
@@ -34,6 +35,9 @@ class AngApplication : Application() {
      */
     override fun onCreate() {
         super.onCreate()
+
+        // Installed first so it also covers failures in the initialisation below.
+        CrashReporter.install(this)
 
         MMKV.initialize(this)
 

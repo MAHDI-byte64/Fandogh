@@ -49,6 +49,7 @@ import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.dto.entities.SubscriptionItem
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.ui.AboutActivity
@@ -59,6 +60,7 @@ import com.v2ray.ang.ui.main.MainStatus
 import com.v2ray.ang.ui.main.MainViewModel
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
 import com.v2ray.ang.ui.settings.SettingsActivity
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.launch
 
 /**
@@ -101,6 +103,9 @@ class FandoghActivity : BaseComponentActivity() {
                 if (uiState.isRunning) TrafficTracker.start() else TrafficTracker.stop()
                 onDispose { TrafficTracker.stop() }
             }
+
+            // A crash report from the previous run takes over the screen until dismissed.
+            var crashReport by remember { mutableStateOf(CrashReporter.lastReport(this@FandoghActivity)) }
 
             var tab by rememberSaveable { mutableIntStateOf(0) }
             var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -150,7 +155,20 @@ class FandoghActivity : BaseComponentActivity() {
                     .fandoghBackground()
                     .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             ) {
-                if (showSettings) {
+                val pendingCrash = crashReport
+                if (pendingCrash != null) {
+                    CrashReportScreen(
+                        report = pendingCrash,
+                        onCopy = {
+                            Utils.setClipboard(context, pendingCrash)
+                            toastSuccess(R.string.toast_success)
+                        },
+                        onDismiss = {
+                            CrashReporter.clear(this@FandoghActivity)
+                            crashReport = null
+                        }
+                    )
+                } else if (showSettings) {
                     VpnSettingsTab(
                         state = settingsState,
                         onDnsDraftChange = { settingsState = settingsState.copy(dnsDraft = it) },

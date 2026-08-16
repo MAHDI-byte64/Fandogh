@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately the simplest form an adaptive icon can take: a bitmap foreground over a
+  flat colour. The system inflates this outside the app's AppCompat theme — for the
+  Android 12+ splash screen it does so during launch, in-process — so anything needing
+  theme resolution (a "?attr/" tint) or vector parsing belongs nowhere near it.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_bg" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
