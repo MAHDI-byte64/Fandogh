@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.fandogh
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -250,8 +251,21 @@ private fun formatDuration(seconds: Long): String {
 
 @Composable
 private fun LiveTiles(state: HomeState) {
+    // Samples land every few seconds; easing between them reads as a live meter rather
+    // than a counter that lurches.
+    val animatedDown by animateFloatAsState(
+        targetValue = state.downSpeed.toFloat(),
+        animationSpec = tween(700),
+        label = "downSpeed"
+    )
+    val animatedUp by animateFloatAsState(
+        targetValue = state.upSpeed.toFloat(),
+        animationSpec = tween(700),
+        label = "upSpeed"
+    )
+
     Row(horizontalArrangement = Arrangement.spacedBy(FandoghSpace.md)) {
-        val down = formatBytes(state.downSpeed)
+        val down = formatBytes(animatedDown.toLong())
         LiveTile(
             modifier = Modifier.weight(1f),
             label = stringResource(R.string.fandogh_download),
@@ -260,7 +274,7 @@ private fun LiveTiles(state: HomeState) {
             accent = FandoghColors.DownloadAccent
         ) { tint -> TileArrow(down = true, color = tint, modifier = Modifier.size(18.dp)) }
 
-        val up = formatBytes(state.upSpeed)
+        val up = formatBytes(animatedUp.toLong())
         LiveTile(
             modifier = Modifier.weight(1f),
             label = stringResource(R.string.fandogh_upload),

@@ -5,6 +5,8 @@ import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -171,7 +173,14 @@ class FandoghActivity : BaseComponentActivity() {
             // Straight from storage rather than the view model's per-group flow: that
             // flow is filled by an async load behind a cache, so right after an import it
             // is still empty and the picker showed "no servers" for servers that existed.
-            val servers = remember(uiState.selectedGroupId, uiState.selectedGuid, uiState.groups, showPicker) {
+            val servers = remember(
+                uiState.selectedGroupId,
+                uiState.selectedGuid,
+                uiState.groups,
+                uiState.isTesting,
+                uiState.status,
+                showPicker
+            ) {
                 pickableServers(uiState.selectedGroupId)
             }
 
@@ -258,7 +267,11 @@ class FandoghActivity : BaseComponentActivity() {
                 } else {
                     Column(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f)) {
-                            when (tab) {
+                            Crossfade(
+                                targetState = tab,
+                                animationSpec = tween(260),
+                                label = "tab"
+                            ) { current -> when (current) {
                                 0 -> HomeTab(
                                     state = homeState,
                                     onToggle = ::toggleService,
@@ -307,7 +320,7 @@ class FandoghActivity : BaseComponentActivity() {
                                         }
                                     }
                                 )
-                            }
+                            } }
                         }
 
                         FandoghBottomBar(selected = tab, onSelect = { tab = it })
@@ -327,7 +340,15 @@ class FandoghActivity : BaseComponentActivity() {
                                 mainViewModel.onAction(MainAction.RestartService)
                             }
                         },
-                        onTestAll = { mainViewModel.onAction(MainAction.TestAllServers) },
+                        onTestAll = {
+                            // testAllRealPing reads the view model's per-group list and
+                            // returns silently when it is empty, which it is until the
+                            // async group load has run. Wait for that load, then test.
+                            scope.launch {
+                                mainViewModel.setupGroupTab(forceRefresh = true).join()
+                                mainViewModel.onAction(MainAction.TestAllServers)
+                            }
+                        },
                         onAddSubscription = {
                             showPicker = false
                             tab = 2

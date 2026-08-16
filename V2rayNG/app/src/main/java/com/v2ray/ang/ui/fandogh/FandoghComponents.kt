@@ -6,6 +6,14 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -164,8 +172,12 @@ fun GradientButton(
 }
 
 /**
- * The home screen's centrepiece: concentric rings around a circular button.
- * [progress] drives the sweeping arc shown while a connection is being established.
+ * The home screen's centrepiece.
+ *
+ * The label is measured against the face rather than set at a fixed size: "DISCONNECT" is
+ * half again as wide as "CONNECT" and used to spill past the circle it sits in. Ripples
+ * expand outward while connected, so the dial reads as live at a glance without becoming
+ * a distraction, and the whole control dips slightly on press for tactile feedback.
  */
 @Composable
 fun ConnectButton(
@@ -177,63 +189,112 @@ fun ConnectButton(
     diameter: androidx.compose.ui.unit.Dp = 300.dp
 ) {
     val transition = rememberInfiniteTransition(label = "connect")
+
     val sweep by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
         label = "sweep"
     )
-    // Rings breathe slowly while connected so the screen feels alive without distracting.
-    val pulse by transition.animateFloat(
+    // Two ripples a half-cycle apart, so one is always mid-flight.
+    val rippleA by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing), RepeatMode.Reverse),
-        label = "pulse"
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "rippleA"
+    )
+    val rippleB by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1.5f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "rippleB"
+    )
+    val breathe by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Reverse),
+        label = "breathe"
     )
 
-    val accent = if (connected) FandoghColors.AccentGreen else FandoghColors.AccentBlue
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "press"
+    )
+
+    val accent by animateColorAsState(
+        targetValue = if (connected) FandoghColors.AccentGreen else FandoghColors.AccentBlue,
+        animationSpec = tween(500),
+        label = "dialAccent"
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (connected) FandoghColors.AccentGreenBright else Color.White,
+        animationSpec = tween(500),
+        label = "dialLabel"
+    )
 
     Box(
-        modifier = modifier.size(diameter),
+        modifier = modifier
+            .size(diameter)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
         contentAlignment = Alignment.Center
     ) {
         Canvas(Modifier.size(diameter)) {
             val c = Offset(size.width / 2f, size.height / 2f)
             val base = size.minDimension / 2f
+            val faceRadius = base * 0.60f
 
-            // Three halo rings, fading outward.
-            listOf(1.00f to 0.05f, 0.84f to 0.08f, 0.68f to 0.12f).forEach { (scale, alpha) ->
-                val a = if (connected) alpha * (0.7f + 0.5f * pulse) else alpha
+            // Static guide rings, barely there when idle.
+            listOf(1.00f, 0.84f).forEach { scaleF ->
                 drawCircle(
-                    color = Color.White.copy(alpha = a),
-                    radius = base * scale,
+                    color = Color.White.copy(alpha = if (connected) 0.07f else 0.05f),
+                    radius = base * scaleF,
                     center = c,
                     style = Stroke(width = 1.dp.toPx())
                 )
             }
 
-            // Glow behind the button face.
+            // Ripples travelling from the face out to the rim while connected.
+            if (connected) {
+                listOf(rippleA, rippleB).forEach { raw ->
+                    val t = raw % 1f
+                    val radius = faceRadius + (base - faceRadius) * t
+                    drawCircle(
+                        color = accent.copy(alpha = 0.34f * (1f - t)),
+                        radius = radius,
+                        center = c,
+                        style = Stroke(width = 1.6.dp.toPx())
+                    )
+                }
+            }
+
+            // Glow behind the face, breathing while connected.
+            val glowAlpha = when {
+                connected -> 0.22f + 0.14f * breathe
+                connecting -> 0.18f
+                else -> 0.12f
+            }
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = if (connected) 0.30f else 0.16f), Color.Transparent),
+                    colors = listOf(accent.copy(alpha = glowAlpha), Color.Transparent),
                     center = c,
-                    radius = base * 0.72f
+                    radius = faceRadius * 1.5f
                 ),
-                radius = base * 0.72f,
+                radius = faceRadius * 1.5f,
                 center = c
             )
 
-            // Button face.
-            val faceRadius = base * 0.545f
-            drawCircle(color = Color(0xFF12233E).copy(alpha = 0.85f), radius = faceRadius, center = c)
+            // Face.
+            drawCircle(color = Color(0xFF12233E).copy(alpha = 0.9f), radius = faceRadius, center = c)
             drawCircle(
-                color = Color.White.copy(alpha = 0.30f),
+                color = if (connected) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.28f),
                 radius = faceRadius,
                 center = c,
-                style = Stroke(width = 1.5.dp.toPx())
+                style = Stroke(width = if (connected) 2.dp.toPx() else 1.5.dp.toPx())
             )
 
-            // Rotating arc while connecting.
             if (connecting) {
                 drawArc(
                     color = accent,
@@ -242,103 +303,44 @@ fun ConnectButton(
                     useCenter = false,
                     topLeft = Offset(c.x - faceRadius, c.y - faceRadius),
                     size = Size(faceRadius * 2, faceRadius * 2),
-                    style = Stroke(width = 3.dp.toPx())
+                    style = Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
                 )
             }
         }
 
+        // The label has to sit inside a circle, so it is sized from the chord available
+        // at its baseline rather than from a constant.
+        val faceDiameter = diameter * 0.60f
+        val labelSize = ((faceDiameter.value * 1.55f) / label.length.coerceAtLeast(7))
+            .coerceIn(11f, 17f)
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.clip(CircleShape).clickable(onClick = onClick).padding(diameter * 0.1f)
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onClick
+                )
+                .padding(diameter * 0.12f)
         ) {
             ShieldGlyph(
-                color = if (connected) FandoghColors.AccentGreen else Color.White,
+                color = labelColor,
                 filled = connected,
-                modifier = Modifier.size(diameter * 0.17f)
+                modifier = Modifier.size(diameter * 0.16f)
             )
-            Spacer(Modifier.height(diameter * 0.045f))
+            Spacer(Modifier.height(diameter * 0.04f))
             Text(
                 text = label.uppercase(),
-                color = if (connected) FandoghColors.AccentGreen else Color.White,
-                fontSize = if (diameter < 240.dp) 14.sp else 16.sp,
+                color = labelColor,
+                fontSize = labelSize.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 2.6.sp,
+                letterSpacing = (labelSize * 0.14f).sp,
                 maxLines = 1,
                 textAlign = TextAlign.Center
             )
         }
-    }
-}
-
-/**
- * The hazelnut mark, drawn with the same geometry as the launcher icon.
- *
- * Deliberately not loaded via painterResource(R.mipmap.ic_launcher): from API 26 that
- * resource resolves to an AdaptiveIconDrawable, which Compose's painterResource cannot
- * decode — it throws, taking the whole screen down before first frame.
- */
-@Composable
-fun FandoghLogo(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        // Work in the icon's 108-unit design space, then scale to the drawn size.
-        val s = size.minDimension / 108f
-        fun p(x: Float, y: Float) = Offset(x * s, y * s)
-
-        val corner = androidx.compose.ui.geometry.CornerRadius(24f * s, 24f * s)
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF1B3358), Color(0xFF122744), Color(0xFF0A1526)),
-                start = Offset(0f, 0f),
-                end = Offset(size.width, size.height)
-            ),
-            size = size,
-            cornerRadius = corner
-        )
-
-        val nut = Path().apply {
-            moveTo(54 * s, 30 * s)
-            cubicTo(69 * s, 30 * s, 80 * s, 43 * s, 80 * s, 59 * s)
-            cubicTo(80 * s, 75 * s, 68 * s, 87 * s, 54 * s, 87 * s)
-            cubicTo(40 * s, 87 * s, 28 * s, 75 * s, 28 * s, 59 * s)
-            cubicTo(28 * s, 43 * s, 39 * s, 30 * s, 54 * s, 30 * s)
-            close()
-        }
-        drawPath(
-            nut,
-            Brush.linearGradient(
-                colors = listOf(Color(0xFFF0B978), Color(0xFFD98F45), Color(0xFFA25F27)),
-                start = p(28f, 32f),
-                end = p(80f, 87f)
-            )
-        )
-
-        val husk = Path().apply {
-            moveTo(28 * s, 44 * s)
-            cubicTo(28 * s, 33 * s, 39 * s, 24 * s, 54 * s, 24 * s)
-            cubicTo(69 * s, 24 * s, 80 * s, 33 * s, 80 * s, 44 * s)
-            var x = 80f
-            repeat(4) {
-                quadraticTo((x - 6.5f) * s, 51.5f * s, (x - 13f) * s, 44 * s)
-                x -= 13f
-            }
-            close()
-        }
-        drawPath(
-            husk,
-            Brush.linearGradient(
-                colors = listOf(Color(0xFF3FD9A0), Color(0xFF2BB6B4), Color(0xFF2E8FE0)),
-                start = p(28f, 24f),
-                end = p(80f, 51f)
-            )
-        )
-
-        val stem = Path().apply {
-            moveTo(52 * s, 27 * s)
-            cubicTo(51 * s, 21 * s, 52 * s, 17 * s, 55 * s, 14 * s)
-            cubicTo(58 * s, 17 * s, 57 * s, 23 * s, 56 * s, 27 * s)
-            close()
-        }
-        drawPath(stem, Color(0xFF2E8FE0))
     }
 }
 
