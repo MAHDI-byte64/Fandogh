@@ -192,8 +192,10 @@ class FandoghActivity : BaseComponentActivity() {
 
             var settingsState by remember { mutableStateOf(readVpnSettings()) }
 
-            // One quota fetch per foreground visit; the refresh button covers the rest.
-            LaunchedEffect(savedSubscription?.first) {
+            // Re-fetch when the tunnel comes up as well as on open: panels are often only
+            // reachable through the VPN, so a fetch made while disconnected can fail even
+            // though nothing is wrong with the subscription.
+            LaunchedEffect(savedSubscription?.first, uiState.isRunning) {
                 if (savedSubscription != null) SubscriptionUsageRepository.refresh()
             }
 

@@ -1,16 +1,16 @@
 package com.v2ray.ang.ui.fandogh
 
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 /**
  * Reads the real allowance from the panel.
@@ -26,6 +26,8 @@ import java.util.concurrent.TimeUnit
  * would render as a confident-looking lie.
  */
 object SubscriptionUsageRepository {
+
+    private const val HEADER_USERINFO = "subscription-userinfo"
 
     private const val KEY_CACHED_UPLOAD = "fandogh_sub_upload"
     private const val KEY_CACHED_DOWNLOAD = "fandogh_sub_download"
@@ -64,46 +66,62 @@ object SubscriptionUsageRepository {
     }
 
     /**
-     * Fetches the header for the first enabled subscription.
+     * Fetches the allowance header for the first enabled subscription.
      *
-     * Only headers are needed, but a plain GET is used rather than HEAD: several panels
-     * answer HEAD with 405 while returning the header perfectly well on GET. The body is
-     * closed without reading, so the payload is never buffered.
+     * This deliberately goes through the same [HttpUtil] path the subscription import
+     * uses. A hand-rolled client here looked equivalent but was not: it never went
+     * through the tunnel's local HTTP proxy, so on a network where the panel is only
+     * reachable via the VPN the config list would import while the quota silently came
+     * back empty. The proxy attempt is tried first and a direct request is the fallback,
+     * matching AngConfigManager, so the quota is fetched under exactly the conditions
+     * the servers were.
      */
     suspend fun refresh(): SubscriptionUsage? = withContext(Dispatchers.IO) {
         val subscription = MmkvManager.decodeSubscriptions()
             .firstOrNull { it.subscription.enabled && it.subscription.url.isNotBlank() }
             ?: return@withContext null
 
-        val client = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .build()
+        val url = HttpUtil.toIdnUrl(subscription.subscription.url)
+        val userAgent = subscription.subscription.userAgent
+        val requestHeaders = subscription.subscription.requestHeaders
 
-        val request = Request.Builder()
-            .url(subscription.subscription.url)
-            .get()
-            .header("User-Agent", subscription.subscription.userAgent?.takeIf { it.isNotBlank() } ?: "Fandogh")
-            .header("Connection", "close")
-            .build()
+        val viaProxy = runCatching {
+            HttpUtil.getUrlResponseHeader(
+                UrlContentRequest(
+                    url = url,
+                    userAgent = userAgent,
+                    requestHeaders = requestHeaders,
+                    timeout = 15000,
+                    httpPort = SettingsManager.getHttpPort(),
+                    proxyUsername = SettingsManager.getSocksUsername(),
+                    proxyPassword = SettingsManager.getSocksPassword()
+                ),
+                HEADER_USERINFO
+            )
+        }.getOrNull()
 
-        try {
-            client.newCall(request).execute().use { response ->
-                val header = response.header("subscription-userinfo")
-                    ?: return@withContext null.also {
-                        LogUtil.d(AppConfig.TAG, "Panel sent no subscription-userinfo header")
-                    }
-                val parsed = parse(header) ?: return@withContext null
-                cache(parsed)
-                _usage.value = parsed
-                parsed
-            }
-        } catch (e: Exception) {
-            LogUtil.w(AppConfig.TAG, "subscription-userinfo fetch failed: ${e.message}")
-            null
+        val header = viaProxy ?: runCatching {
+            HttpUtil.getUrlResponseHeader(
+                UrlContentRequest(
+                    url = url,
+                    userAgent = userAgent,
+                    requestHeaders = requestHeaders
+                ),
+                HEADER_USERINFO
+            )
+        }.getOrNull()
+
+        if (header == null) {
+            LogUtil.d(AppConfig.TAG, "Panel sent no $HEADER_USERINFO header")
+            return@withContext null
         }
+
+        val parsed = parse(header) ?: return@withContext null
+        cache(parsed)
+        _usage.value = parsed
+        parsed
     }
+
 
     /** Parses `upload=..; download=..; total=..; expire=..` in any order. */
     internal fun parse(header: String): SubscriptionUsage? {

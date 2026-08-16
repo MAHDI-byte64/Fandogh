@@ -18,7 +18,7 @@ import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.toSpeedString
 import com.v2ray.ang.helper.MessageHelper
 import com.v2ray.ang.dto.TrafficMessage
-import com.v2ray.ang.ui.main.MainActivity
+import com.v2ray.ang.ui.fandogh.FandoghActivity
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +74,9 @@ object NotificationManager {
 
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
-        val startMainIntent = Intent(service, MainActivity::class.java)
+        // Tapping the notification must return to Fandogh, not the inherited v2rayNG
+        // config list, which is not part of this app's UI at all.
+        val startMainIntent = Intent(service, FandoghActivity::class.java)
         val contentPendingIntent = PendingIntent.getActivity(service, NOTIFICATION_PENDING_INTENT_CONTENT, startMainIntent, flags)
 
         val stopV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)

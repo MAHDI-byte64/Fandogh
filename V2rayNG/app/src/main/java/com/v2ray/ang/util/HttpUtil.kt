@@ -205,6 +205,56 @@ object HttpUtil {
         throw IOException("Too many redirects")
     }
 
+    /**
+     * Reads a single response header from a URL, using the same client, proxy, user agent
+     * and auth handling as [getUrlContentWithUserAgent].
+     *
+     * Subscription panels report the account's allowance in a header rather than the body,
+     * so this exists to read that without a second, differently-behaving HTTP path: a
+     * request that reaches the panel for the config list must reach it for the header too.
+     * Redirects are left to OkHttp because only the final response's headers matter.
+     *
+     * @return the header value, or null when the request fails or the header is absent.
+     */
+    fun getUrlResponseHeader(request: UrlContentRequest, name: String): String? {
+        val url = request.url ?: return null
+        val client = buildOkHttpClient(
+            request.timeout,
+            request.httpPort,
+            request.proxyUsername,
+            request.proxyPassword,
+            followRedirects = true
+        )
+        val finalUserAgent = if (request.userAgent.isNullOrBlank()) {
+            "v2rayNG/${BuildConfig.VERSION_NAME}"
+        } else {
+            request.userAgent
+        }
+        val requestBuilder = Request.Builder()
+            .url(url)
+            .get()
+            .header("User-agent", finalUserAgent)
+            .header("Connection", "close")
+
+        applyEmbeddedBasicAuthHeader(url, requestBuilder)
+
+        for ((key, value) in JsonUtil.parseHeadersToMap(request.requestHeaders)) {
+            try {
+                requestBuilder.header(key, value)
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+
+        return try {
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                response.header(name)
+            }
+        } catch (e: Exception) {
+            LogUtil.w(AppConfig.TAG, "Failed to read header '$name': ${e.message}")
+            null
+        }
+    }
+
     private fun applyEmbeddedBasicAuthHeader(rawUrl: String, requestBuilder: Request.Builder) {
         val parsed = runCatching { URL(rawUrl) }.getOrNull() ?: return
         parsed.userInfo?.let { userInfo ->
