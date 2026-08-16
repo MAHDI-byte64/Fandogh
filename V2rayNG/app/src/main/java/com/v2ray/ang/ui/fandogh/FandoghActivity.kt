@@ -49,11 +49,12 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
+import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.extension.toastSuccess
+import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.main.MainAction
@@ -64,7 +65,9 @@ import com.v2ray.ang.ui.main.MainViewModel
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
 import com.v2ray.ang.ui.settings.SettingsActivity
 import com.v2ray.ang.util.Utils
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fandogh's own front end.
@@ -358,17 +361,17 @@ class FandoghActivity : BaseComponentActivity() {
     )
 
     /**
-     * Stores the subscription link and pulls its servers.
+     * Stores the subscription link and imports its servers.
      *
-     * The earlier version wrote the record and then fired MainAction.UpdateSubscriptions,
-     * which resolves against the currently selected group — for a link being added for
-     * the first time there is no such group, so nothing was ever fetched and the tab
-     * stayed empty. This follows the path the classic editor uses instead: mint the guid
-     * up front so the new record can be addressed, then hand that id to
-     * SubscriptionUpdater, which does the fetch and import in the background worker.
+     * Two earlier attempts failed here for different reasons, both silent:
+     * MainAction.UpdateSubscriptions resolves against the selected group, which does not
+     * exist yet for a link being added; and SubscriptionUpdater.syncOne only schedules
+     * *periodic* background work — and returns immediately without scheduling anything
+     * when autoUpdate is off, which it is by default. Neither ever performed a fetch.
      *
-     * Replacing the URL invalidates any cached allowance, so the quota card cannot show
-     * the previous panel's numbers against the new one.
+     * AngConfigManager.updateConfigViaSub is the call that actually downloads and parses,
+     * the same one the classic "update subscription" menu item uses. It blocks, so it
+     * runs on IO, and it reports how many profiles it imported.
      */
     private fun saveSubscription(
         url: String,
@@ -394,34 +397,42 @@ class FandoghActivity : BaseComponentActivity() {
             if (remarks.isBlank()) remarks = getString(R.string.app_name)
             this.url = trimmed
             enabled = true
-            // 3x-ui links are https; allow the insecure-scheme guard to pass either way
-            // rather than silently refusing a link the user pasted from their panel.
+            // updateConfigViaSub rejects a link outright unless one of these holds; panel
+            // links are pasted by the user and may be plain http on a custom port.
             allowInsecureUrl = true
+            // Keep the servers fresh without the user coming back here.
+            autoUpdate = true
         }
         MmkvManager.encodeSubscription(guid, item)
         if (changed) SubscriptionUsageRepository.clear()
 
         setBusy(true)
         setMessage(null)
-        SubscriptionUpdater.syncOne(this, guid)
 
         scopeLaunch {
-            // The update runs in a worker; poll briefly for the servers to land rather
-            // than reporting success the instant the request is queued.
-            var found = 0
-            repeat(12) {
-                kotlinx.coroutines.delay(1000)
-                found = MmkvManager.decodeServerList(guid).size
-                if (found > 0) return@repeat
+            val result = withContext(Dispatchers.IO) {
+                AngConfigManager.updateConfigViaSub(SubscriptionCache(guid, item))
             }
             SubscriptionUsageRepository.refresh()
             mainViewModel.setupGroupTab(forceRefresh = true)
+            // Point at the new group, and pick its first server when nothing is active
+            // yet, so pasting a link and pressing Connect works without a detour through
+            // the server list.
+            mainViewModel.onAction(MainAction.SelectGroup(guid))
+            if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
+                MmkvManager.decodeServerList(guid).firstOrNull()?.let {
+                    mainViewModel.onAction(MainAction.SelectServer(it))
+                }
+            }
+
             setBusy(false)
             setMessage(
-                if (found > 0) {
-                    getString(R.string.fandogh_subscription_saved_count, found)
-                } else {
-                    getString(R.string.fandogh_subscription_empty)
+                when {
+                    result.configCount > 0 ->
+                        getString(R.string.fandogh_subscription_saved_count, result.configCount)
+
+                    result.skipCount > 0 -> getString(R.string.fandogh_invalid_link)
+                    else -> getString(R.string.fandogh_subscription_empty)
                 }
             )
         }
