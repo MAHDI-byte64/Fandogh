@@ -630,4 +630,16 @@
     <!-- Live speed states -->
     <string name="fandogh_live_disconnected">برای دیدن سرعت لحظه‌ای وصل شوید</string>
     <string name="fandogh_live_waiting">در انتظار اولین نمونه…</string>
+    <!-- First-run onboarding -->
+    <string name="fandogh_welcome_title">به فندق خوش آمدید</string>
+    <string name="fandogh_welcome_subtitle">اینترنت خصوصی و پرسرعت — با یک لمس</string>
+    <string name="fandogh_onboard_sub_body">لینک اشتراک پنل خود را بگذارید تا سرورها دریافت شوند.</string>
+    <string name="fandogh_onboard_continue">ادامه</string>
+    <string name="fandogh_onboard_allow">اجازه نوتیفیکیشن</string>
+    <string name="fandogh_onboard_skip">رد کردن</string>
+    <string name="fandogh_onboard_later">بعداً اضافه می‌کنم</string>
+    <string name="fandogh_onboard_vpn_title">تونل را راه بیندازیم</string>
+    <string name="fandogh_onboard_vpn_body">اندروید برای ساخت اتصال امن اجازه می‌خواهد. وقتی سیستم پرسید OK را بزنید — آخرین مرحله است.</string>
+    <string name="fandogh_onboard_notify_title">در جریان باشید</string>
+    <string name="fandogh_onboard_notify_body">با روشن کردن نوتیفیکیشن، وضعیت اتصال و موارد مهم را می‌گوییم. بدون مزاحمت.</string>
 </resources>

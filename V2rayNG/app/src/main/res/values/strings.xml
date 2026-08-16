@@ -630,4 +630,16 @@
     <!-- Live speed states -->
     <string name="fandogh_live_disconnected">Connect to see live throughput</string>
     <string name="fandogh_live_waiting">Waiting for the first sample…</string>
+    <!-- First-run onboarding -->
+    <string name="fandogh_welcome_title">Welcome to Fandogh</string>
+    <string name="fandogh_welcome_subtitle">Private, high-speed internet — one tap away</string>
+    <string name="fandogh_onboard_sub_body">Paste the subscription link from your panel and Fandogh will pull your servers.</string>
+    <string name="fandogh_onboard_continue">Continue</string>
+    <string name="fandogh_onboard_allow">Allow notifications</string>
+    <string name="fandogh_onboard_skip">Skip</string>
+    <string name="fandogh_onboard_later">I will add it later</string>
+    <string name="fandogh_onboard_vpn_title">Let us set up your tunnel</string>
+    <string name="fandogh_onboard_vpn_body">Android needs your go-ahead before Fandogh can create a secure VPN connection. Tap OK when the system asks — that is the last bit of setup.</string>
+    <string name="fandogh_onboard_notify_title">Stay in the loop</string>
+    <string name="fandogh_onboard_notify_body">Turn on notifications and we will tell you when you are connected and when something needs your attention. Nothing noisy.</string>
 </resources>

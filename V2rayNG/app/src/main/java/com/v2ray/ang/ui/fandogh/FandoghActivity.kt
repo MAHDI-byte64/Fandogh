@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.fandogh
 
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -51,6 +52,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.core.LauncherManager
+import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.extension.toastSuccess
@@ -71,6 +73,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val KEY_ONBOARDED = "fandogh_onboarded"
+
 /**
  * Fandogh's own front end.
  *
@@ -87,9 +91,24 @@ class FandoghActivity : BaseComponentActivity() {
         MainViewModel.Factory(application, MainRepository(application as AngApplication))
     }
 
+    /** Set while onboarding drives the consent dialog, so a grant advances the flow. */
+    private var onVpnConsentResult: ((Boolean) -> Unit)? = null
+
     private val requestVpnPermission =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (it.resultCode == RESULT_OK) startCore()
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val granted = result.resultCode == RESULT_OK
+            val pending = onVpnConsentResult
+            onVpnConsentResult = null
+            if (pending != null) pending(granted) else if (granted) startCore()
+        }
+
+    private var onNotificationResult: (() -> Unit)? = null
+
+    private val requestNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // Either answer moves the flow along; the prompt is a courtesy, not a gate.
+            onNotificationResult?.invoke()
+            onNotificationResult = null
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -144,6 +163,10 @@ class FandoghActivity : BaseComponentActivity() {
                 (uiState.status as? MainStatus.ConnectionTest)?.let {
                     latencyMillis = it.result.delayMillis
                 }
+            }
+
+            var onboardingStep by rememberSaveable {
+                mutableStateOf(if (isOnboarded()) null else OnboardingStep.Subscription)
             }
 
             // A crash report from the previous run takes over the screen until dismissed.
@@ -212,6 +235,7 @@ class FandoghActivity : BaseComponentActivity() {
                     .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
             ) {
                 val pendingCrash = crashReport
+                val step = onboardingStep
                 if (pendingCrash != null) {
                     CrashReportScreen(
                         report = pendingCrash,
@@ -222,6 +246,60 @@ class FandoghActivity : BaseComponentActivity() {
                         onDismiss = {
                             CrashReporter.clear(this@FandoghActivity)
                             crashReport = null
+                        }
+                    )
+                } else if (step != null) {
+                    OnboardingScreen(
+                        step = step,
+                        subscriptionUrl = subscriptionUrl,
+                        busy = busy,
+                        message = message,
+                        onUrlChange = { subscriptionUrl = it },
+                        onSubmitSubscription = {
+                            saveSubscription(
+                                url = subscriptionUrl,
+                                existingGuid = savedSubscription?.first,
+                                setBusy = { busy = it },
+                                setMessage = { message = it },
+                                scopeLaunch = { block -> scope.launch { block() } },
+                                onImported = { onboardingStep = OnboardingStep.VpnPermission }
+                            )
+                        },
+                        onSkipSubscription = {
+                            message = null
+                            onboardingStep = OnboardingStep.VpnPermission
+                        },
+                        onGrantVpn = {
+                            val intent = VpnService.prepare(this@FandoghActivity)
+                            if (intent == null) {
+                                onboardingStep = OnboardingStep.Notifications
+                            } else {
+                                onVpnConsentResult = { onboardingStep = OnboardingStep.Notifications }
+                                requestVpnPermission.launch(intent)
+                            }
+                        },
+                        onGrantNotifications = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                onNotificationResult = {
+                                    markOnboarded()
+                                    onboardingStep = null
+                                }
+                                requestNotifications.launch(PermissionType.POST_NOTIFICATIONS.getPermission())
+                            } else {
+                                markOnboarded()
+                                onboardingStep = null
+                            }
+                        },
+                        onSkip = {
+                            when (step) {
+                                OnboardingStep.VpnPermission ->
+                                    onboardingStep = OnboardingStep.Notifications
+
+                                else -> {
+                                    markOnboarded()
+                                    onboardingStep = null
+                                }
+                            }
                         }
                     )
                 } else if (showSettings) {
@@ -274,7 +352,7 @@ class FandoghActivity : BaseComponentActivity() {
                             ) { current -> when (current) {
                                 0 -> HomeTab(
                                     state = homeState,
-                                    onToggle = ::toggleService,
+                                    onToggle = { toggleService(onNoServer = { tab = 2 }) },
                                     onOpenSettings = {
                                         settingsState = readVpnSettings()
                                         showSettings = true
@@ -421,7 +499,8 @@ class FandoghActivity : BaseComponentActivity() {
         existingGuid: String?,
         setBusy: (Boolean) -> Unit,
         setMessage: (String?) -> Unit,
-        scopeLaunch: (suspend () -> Unit) -> Unit
+        scopeLaunch: (suspend () -> Unit) -> Unit,
+        onImported: (() -> Unit)? = null
     ) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) {
@@ -478,14 +557,23 @@ class FandoghActivity : BaseComponentActivity() {
                     else -> getString(R.string.fandogh_subscription_empty)
                 }
             )
+            // Only move on when servers actually arrived; a failed link should stay put
+            // so the message is read rather than flashed past.
+            if (result.configCount > 0) onImported?.invoke()
         }
     }
 
     /** Mirrors MainActivity's FAB behaviour, including the VPN consent dialog. */
-    private fun toggleService() {
+    private fun toggleService(onNoServer: () -> Unit) {
         if (mainViewModel.uiState.value.isRunning) {
             LauncherManager.stopService(this)
-        } else if (SettingsManager.isVpnMode()) {
+            return
+        }
+        if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
+            onNoServer()
+            return
+        }
+        if (SettingsManager.isVpnMode()) {
             val intent = VpnService.prepare(this)
             if (intent == null) startCore() else requestVpnPermission.launch(intent)
         } else {
@@ -493,12 +581,26 @@ class FandoghActivity : BaseComponentActivity() {
         }
     }
 
-    private fun startCore() {
+    /**
+     * Starts the tunnel, or reports that there is nothing to start.
+     *
+     * Previously this bounced to the classic v2rayNG list, which is jarring for someone
+     * who has only ever seen this UI — pressing Connect on a fresh install dropped them
+     * into a different app. The caller decides where to send them instead.
+     */
+    private fun startCore(onNoServer: (() -> Unit)? = null) {
         if (mainViewModel.uiState.value.selectedGuid.isNullOrEmpty()) {
-            startActivity(Intent(this, MainActivity::class.java))
+            onNoServer?.invoke() ?: toastSuccess(R.string.fandogh_no_server)
             return
         }
         LauncherManager.startService(this)
+    }
+
+    private fun isOnboarded(): Boolean =
+        MmkvManager.decodeSettingsBool(KEY_ONBOARDED, false)
+
+    private fun markOnboarded() {
+        MmkvManager.encodeSettings(KEY_ONBOARDED, true)
     }
 }
 
