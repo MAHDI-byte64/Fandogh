@@ -65,6 +65,7 @@ fun ServerPickerSheet(
     servers: List<PickableServer>,
     selectedGuid: String?,
     testing: Boolean,
+    progressText: String = "",
     onSelect: (String) -> Unit,
     onTestAll: () -> Unit,
     onAddSubscription: () -> Unit,
@@ -130,10 +131,12 @@ fun ServerPickerSheet(
                 if (servers.isNotEmpty()) {
                     Spacer(Modifier.width(FandoghSpace.md))
                     PillAction(
-                        label = if (testing) {
-                            stringResource(R.string.fandogh_testing)
-                        } else {
-                            stringResource(R.string.fandogh_test_all)
+                        // Showing the remaining count is what makes a slow batch read as
+                        // "working" rather than "ignored me".
+                        label = when {
+                            testing && progressText.isNotBlank() -> progressText
+                            testing -> stringResource(R.string.fandogh_testing)
+                            else -> stringResource(R.string.fandogh_test_all)
                         },
                         accent = FandoghColors.AccentGreen,
                         enabled = !testing,

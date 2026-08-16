@@ -624,6 +624,7 @@
     <string name="fandogh_subscription_saved_count">%1$d servers imported</string>
     <!-- Server picker -->
     <string name="fandogh_testing">Testing…</string>
+    <string name="fandogh_test_unavailable">Nothing to test yet — add a subscription first.</string>
     <string name="fandogh_search_servers">Search servers</string>
     <string name="fandogh_go_to_profile">Add subscription</string>
     <string name="fandogh_no_matches">Nothing matches "%1$s"</string>

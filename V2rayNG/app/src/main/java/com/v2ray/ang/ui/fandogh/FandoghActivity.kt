@@ -55,6 +55,7 @@ import com.v2ray.ang.core.LauncherManager
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.dto.entities.SubscriptionCache
 import com.v2ray.ang.dto.entities.SubscriptionItem
+import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
@@ -136,6 +137,12 @@ class FandoghActivity : BaseComponentActivity() {
                 onDispose { TrafficTracker.stop(this@FandoghActivity) }
             }
 
+            val pingTest = remember { PingTestController(context) }
+            DisposableEffect(pingTest) {
+                pingTest.register()
+                onDispose { pingTest.unregister() }
+            }
+
             // Session clock and a latency probe, both scoped to the current connection.
             var sessionSeconds by remember { mutableStateOf(0L) }
             var latencyMillis by remember { mutableStateOf<Long?>(null) }
@@ -202,6 +209,7 @@ class FandoghActivity : BaseComponentActivity() {
                 uiState.groups,
                 uiState.isTesting,
                 uiState.status,
+                pingTest.resultTick,
                 showPicker
             ) {
                 pickableServers(uiState.selectedGroupId)
@@ -409,7 +417,8 @@ class FandoghActivity : BaseComponentActivity() {
                     ServerPickerSheet(
                         servers = servers,
                         selectedGuid = uiState.selectedGuid,
-                        testing = uiState.isTesting,
+                        testing = pingTest.testing,
+                        progressText = pingTest.progress,
                         onSelect = { guid ->
                             mainViewModel.onAction(MainAction.SelectServer(guid))
                             showPicker = false
@@ -419,12 +428,16 @@ class FandoghActivity : BaseComponentActivity() {
                             }
                         },
                         onTestAll = {
-                            // testAllRealPing reads the view model's per-group list and
-                            // returns silently when it is empty, which it is until the
-                            // async group load has run. Wait for that load, then test.
-                            scope.launch {
-                                mainViewModel.setupGroupTab(forceRefresh = true).join()
-                                mainViewModel.onAction(MainAction.TestAllServers)
+                            // Test exactly the servers on screen. Going through the view
+                            // model instead meant testing whatever its async group list
+                            // happened to hold, which was often nothing at all.
+                            val started = pingTest.start(
+                                servers.map { it.guid },
+                                uiState.selectedGroupId,
+                                scope
+                            )
+                            if (!started) {
+                                context.toastError(R.string.fandogh_test_unavailable)
                             }
                         },
                         onAddSubscription = {
