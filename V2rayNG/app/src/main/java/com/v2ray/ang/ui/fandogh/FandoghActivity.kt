@@ -271,7 +271,8 @@ class FandoghActivity : BaseComponentActivity() {
 
                                 1 -> StatsTab(
                                     totals = totals,
-                                    quotaBytes = usage?.totalBytes
+                                    quotaBytes = usage?.totalBytes,
+                                    connected = uiState.isRunning
                                 )
 
                                 else -> ProfileTab(

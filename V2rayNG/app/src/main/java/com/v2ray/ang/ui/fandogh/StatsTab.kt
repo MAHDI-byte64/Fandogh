@@ -36,6 +36,7 @@ import java.util.Locale
 fun StatsTab(
     totals: TrafficTracker.Totals,
     quotaBytes: Long?,
+    connected: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -79,7 +80,7 @@ fun StatsTab(
         }
 
         Spacer(Modifier.height(26.dp))
-        LiveSpeedCard(totals)
+        LiveSpeedCard(totals, connected)
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -203,29 +204,53 @@ private fun TodayCard(
     }
 }
 
+/**
+ * Live throughput, with the reason shown when there is nothing to display.
+ *
+ * Samples come from the daemon process over a broadcast, so "no numbers" has three quite
+ * different causes — not connected, connected but the first sample has not landed, or
+ * genuinely idle. Collapsing all three into a row of zeroes made a working screen look
+ * broken, so each says what it is.
+ */
 @Composable
-private fun LiveSpeedCard(totals: TrafficTracker.Totals) {
-    GlassCard(contentPadding = PaddingValues(20.dp)) {
+private fun LiveSpeedCard(totals: TrafficTracker.Totals, connected: Boolean) {
+    GlassCard(contentPadding = PaddingValues(FandoghSpace.xl)) {
         Text(
             stringResource(R.string.fandogh_live_speed),
             color = FandoghColors.TextPrimary,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
-        Spacer(Modifier.height(14.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            SpeedReadout(
-                label = stringResource(R.string.fandogh_upload),
-                speed = totals.upSpeed,
-                accent = FandoghColors.UploadAccent
-            )
-            SpeedReadout(
-                label = stringResource(R.string.fandogh_download),
-                speed = totals.downSpeed,
-                accent = FandoghColors.DownloadAccent
-            )
+        Spacer(Modifier.height(FandoghSpace.md))
+
+        when {
+            !connected -> StatusLine(stringResource(R.string.fandogh_live_disconnected))
+
+            !totals.hasLiveData -> StatusLine(stringResource(R.string.fandogh_live_waiting))
+
+            else -> Row(horizontalArrangement = Arrangement.spacedBy(FandoghSpace.xxl)) {
+                SpeedReadout(
+                    label = stringResource(R.string.fandogh_download),
+                    speed = totals.downSpeed,
+                    accent = FandoghColors.DownloadAccent
+                )
+                SpeedReadout(
+                    label = stringResource(R.string.fandogh_upload),
+                    speed = totals.upSpeed,
+                    accent = FandoghColors.UploadAccent
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun StatusLine(text: String) {
+    Text(
+        text = text,
+        color = FandoghColors.TextSecondary,
+        fontSize = 14.sp
+    )
 }
 
 @Composable

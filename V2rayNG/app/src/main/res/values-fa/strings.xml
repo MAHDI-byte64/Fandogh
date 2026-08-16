@@ -627,4 +627,7 @@
     <string name="fandogh_search_servers">جستجوی سرور</string>
     <string name="fandogh_go_to_profile">افزودن اشتراک</string>
     <string name="fandogh_no_matches">چیزی با «%1$s» پیدا نشد</string>
+    <!-- Live speed states -->
+    <string name="fandogh_live_disconnected">برای دیدن سرعت لحظه‌ای وصل شوید</string>
+    <string name="fandogh_live_waiting">در انتظار اولین نمونه…</string>
 </resources>

@@ -486,8 +486,10 @@ object CoreServiceManager {
 
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
+                    // The sampler stays running: it is the only source of the traffic
+                    // totals the Stats screen accumulates, and stopping it here made the
+                    // month lose every byte transferred with the screen off.
                     LogUtil.i(AppConfig.TAG, "StartCore-Manager: Screen off")
-                    NotificationManager.stopSpeedNotification()
                 }
 
                 Intent.ACTION_SCREEN_ON -> {

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -379,8 +380,10 @@ fun DonutGauge(
     centerContent: @Composable () -> Unit
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(170.dp)) {
-            val stroke = 18.dp.toPx()
+        // Fills the box rather than a fixed 170dp, which used to overflow whenever the
+        // caller asked for a smaller gauge.
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = (size.minDimension * 0.11f).coerceIn(10.dp.toPx(), 20.dp.toPx())
             val inset = stroke / 2f
             val arcSize = Size(size.width - stroke, size.height - stroke)
             drawArc(

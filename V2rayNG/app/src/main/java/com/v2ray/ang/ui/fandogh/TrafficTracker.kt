@@ -41,9 +41,12 @@ object TrafficTracker {
         val todayUp: Long = 0,
         val todayDown: Long = 0,
         val upSpeed: Long = 0,
-        val downSpeed: Long = 0
+        val downSpeed: Long = 0,
+        /** Uptime millis of the last sample received, or 0 when none has arrived yet. */
+        val lastSampleAt: Long = 0
     ) {
         val monthTotal: Long get() = monthUp + monthDown
+        val hasLiveData: Boolean get() = lastSampleAt > 0
     }
 
     private val _totals = MutableStateFlow(load())
@@ -77,12 +80,12 @@ object TrafficTracker {
         if (!registered) return
         runCatching { context.applicationContext.unregisterReceiver(receiver) }
         registered = false
-        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0)
+        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0, lastSampleAt = 0)
     }
 
     /** Zeroes the live rate without touching accumulated totals. */
     fun clearRate() {
-        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0)
+        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0, lastSampleAt = 0)
     }
 
     private fun record(sample: TrafficMessage) {
@@ -94,7 +97,8 @@ object TrafficTracker {
             todayUp = rolled.todayUp + sample.uplinkBytes,
             todayDown = rolled.todayDown + sample.downlinkBytes,
             upSpeed = (sample.uplinkBytes / seconds).toLong(),
-            downSpeed = (sample.downlinkBytes / seconds).toLong()
+            downSpeed = (sample.downlinkBytes / seconds).toLong(),
+            lastSampleAt = android.os.SystemClock.elapsedRealtime()
         )
         _totals.value = next
         if (sample.uplinkBytes > 0 || sample.downlinkBytes > 0) persist(next)
