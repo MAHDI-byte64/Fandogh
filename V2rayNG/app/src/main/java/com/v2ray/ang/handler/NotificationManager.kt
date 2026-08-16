@@ -16,6 +16,8 @@ import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.extension.toSpeedString
+import com.v2ray.ang.helper.MessageHelper
+import com.v2ray.ang.dto.TrafficMessage
 import com.v2ray.ang.ui.main.MainActivity
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.CoroutineScope
@@ -40,11 +42,14 @@ object NotificationManager {
     private var mNotificationManager: NotificationManager? = null
 
     /**
-     * Starts the speed notification.
-     * @param currentConfig The current profile configuration.
+     * Starts the traffic sampler.
+     *
+     * The sampler runs whenever the core does, not only when the speed notification is
+     * switched on: the same poll is the UI's only source of traffic figures, since the
+     * stats API lives in this process alone. The notification itself is still gated on
+     * the preference inside [updateSpeedNotificationOnce].
      */
     fun startSpeedNotification() {
-        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) != true) return
         if (speedNotificationJob != null || CoreServiceManager.isRunning() == false) return
 
         var lastZeroSpeed = false
@@ -261,7 +266,21 @@ object NotificationManager {
         val proxyTotal = proxyUplink + proxyDownlink
         val directTotal = directUplink + directDownlink
         val zeroSpeed = proxyTotal + directTotal == 0L
-        if (!zeroSpeed || !lastZeroSpeed) {
+
+        // Forward the proxied sample to the UI process, which has no way to read it
+        // itself. Sent every tick, including idle ones, so a live speed readout can fall
+        // back to zero instead of holding the last non-zero value.
+        getService()?.let { service ->
+            MessageHelper.sendMsg2UI(
+                service,
+                AppConfig.MSG_STATE_TRAFFIC,
+                TrafficMessage(proxyUplink, proxyDownlink, sinceLastQueryIn)
+            )
+        }
+
+        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED) == true &&
+            (!zeroSpeed || !lastZeroSpeed)
+        ) {
             val text = StringBuilder()
             appendSpeedString(
                 text, AppConfig.TAG_PROXY,

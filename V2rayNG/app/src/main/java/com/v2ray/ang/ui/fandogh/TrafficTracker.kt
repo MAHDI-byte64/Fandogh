@@ -1,35 +1,32 @@
 package com.v2ray.ang.ui.fandogh
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.core.CoreServiceManager
+import com.v2ray.ang.dto.TrafficMessage
+import com.v2ray.ang.extension.serializable
 import com.v2ray.ang.handler.MmkvManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
+import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import java.util.Calendar
 
 /**
- * Accumulates proxied traffic for the Stats screen.
+ * Traffic totals for the Stats screen.
  *
- * The core reports *deltas* since the previous query, so totals only stay correct if a
- * single owner polls it. This object is that owner while the Fandogh UI is in the
- * foreground; the notification's own sampler runs on the same delta source, which is why
- * the poll interval here is deliberately coarse and why totals are persisted as running
- * sums rather than recomputed.
+ * The Xray core lives in the :RunSoLibV2RayDaemon process and its stats API is reachable
+ * only from there, so this cannot poll it — an earlier version tried and simply read
+ * zeroes. Instead the daemon's existing sampler broadcasts each delta and this collects
+ * them, which also means one owner of the delta stream rather than two competing pollers.
  *
  * Daily and monthly buckets roll over on read, so a device left running past midnight
  * reports the new day rather than silently extending the old one.
  */
 object TrafficTracker {
-
-    private const val POLL_INTERVAL_MS = 2_000L
 
     private const val KEY_MONTH_TAG = "fandogh_traffic_month_tag"
     private const val KEY_MONTH_UP = "fandogh_traffic_month_up"
@@ -49,11 +46,59 @@ object TrafficTracker {
         val monthTotal: Long get() = monthUp + monthDown
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var job: Job? = null
-
     private val _totals = MutableStateFlow(load())
     val totals: StateFlow<Totals> = _totals.asStateFlow()
+
+    private var registered = false
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.getIntExtra("key", -1) != AppConfig.MSG_STATE_TRAFFIC) return
+            val sample = intent.serializable<TrafficMessage>("content") ?: return
+            record(sample)
+        }
+    }
+
+    /** Starts listening. Safe to call repeatedly — only one registration is kept. */
+    fun start(context: Context) {
+        if (registered) return
+        runCatching {
+            ContextCompat.registerReceiver(
+                context.applicationContext,
+                receiver,
+                IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY),
+                Utils.receiverFlags()
+            )
+            registered = true
+        }
+    }
+
+    fun stop(context: Context) {
+        if (!registered) return
+        runCatching { context.applicationContext.unregisterReceiver(receiver) }
+        registered = false
+        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0)
+    }
+
+    /** Zeroes the live rate without touching accumulated totals. */
+    fun clearRate() {
+        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0)
+    }
+
+    private fun record(sample: TrafficMessage) {
+        val seconds = (sample.elapsedMillis.coerceAtLeast(1)) / 1000.0
+        val rolled = rollIfNeeded(_totals.value)
+        val next = rolled.copy(
+            monthUp = rolled.monthUp + sample.uplinkBytes,
+            monthDown = rolled.monthDown + sample.downlinkBytes,
+            todayUp = rolled.todayUp + sample.uplinkBytes,
+            todayDown = rolled.todayDown + sample.downlinkBytes,
+            upSpeed = (sample.uplinkBytes / seconds).toLong(),
+            downSpeed = (sample.downlinkBytes / seconds).toLong()
+        )
+        _totals.value = next
+        if (sample.uplinkBytes > 0 || sample.downlinkBytes > 0) persist(next)
+    }
 
     private fun monthTag(): String {
         val c = Calendar.getInstance()
@@ -85,43 +130,6 @@ object TrafficTracker {
         MmkvManager.encodeSettings(KEY_DAY_DOWN, t.todayDown)
     }
 
-    /** Begins polling. Safe to call repeatedly — only one poll loop ever runs. */
-    fun start() {
-        if (job?.isActive == true) return
-        job = scope.launch {
-            var lastSampleAt = System.currentTimeMillis()
-            while (isActive) {
-                delay(POLL_INTERVAL_MS)
-                val now = System.currentTimeMillis()
-                val elapsedSec = ((now - lastSampleAt).coerceAtLeast(1)) / 1000.0
-                lastSampleAt = now
-
-                var up = 0L
-                var down = 0L
-                CoreServiceManager.queryAllOutboundTrafficStats().forEach { stat ->
-                    if (stat.tag == AppConfig.TAG_DIRECT || stat.tag == AppConfig.TAG_BLOCKED) return@forEach
-                    when (stat.direction) {
-                        AppConfig.UPLINK -> up += stat.value
-                        AppConfig.DOWNLINK -> down += stat.value
-                    }
-                }
-
-                // Roll the buckets before adding, so a rollover mid-session lands correctly.
-                val rolled = rollIfNeeded(_totals.value)
-                val next = rolled.copy(
-                    monthUp = rolled.monthUp + up,
-                    monthDown = rolled.monthDown + down,
-                    todayUp = rolled.todayUp + up,
-                    todayDown = rolled.todayDown + down,
-                    upSpeed = (up / elapsedSec).toLong(),
-                    downSpeed = (down / elapsedSec).toLong()
-                )
-                _totals.value = next
-                if (up > 0 || down > 0) persist(next)
-            }
-        }
-    }
-
     private fun rollIfNeeded(current: Totals): Totals {
         var result = current
         if (MmkvManager.decodeSettingsString(KEY_MONTH_TAG) != monthTag()) {
@@ -131,12 +139,6 @@ object TrafficTracker {
             result = result.copy(todayUp = 0, todayDown = 0)
         }
         return result
-    }
-
-    fun stop() {
-        job?.cancel()
-        job = null
-        _totals.value = _totals.value.copy(upSpeed = 0, downSpeed = 0)
     }
 }
 

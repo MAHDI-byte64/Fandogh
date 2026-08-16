@@ -53,6 +53,7 @@ import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.base.BaseComponentActivity
 import com.v2ray.ang.ui.main.MainAction
@@ -106,9 +107,38 @@ class FandoghActivity : BaseComponentActivity() {
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
 
-            DisposableEffect(uiState.isRunning) {
-                if (uiState.isRunning) TrafficTracker.start() else TrafficTracker.stop()
-                onDispose { TrafficTracker.stop() }
+            DisposableEffect(Unit) {
+                TrafficTracker.start(this@FandoghActivity)
+                onDispose { TrafficTracker.stop(this@FandoghActivity) }
+            }
+
+            // Session clock and a latency probe, both scoped to the current connection.
+            var sessionSeconds by remember { mutableStateOf(0L) }
+            var latencyMillis by remember { mutableStateOf<Long?>(null) }
+
+            LaunchedEffect(uiState.isRunning) {
+                if (!uiState.isRunning) {
+                    sessionSeconds = 0
+                    latencyMillis = null
+                    TrafficTracker.clearRate()
+                    return@LaunchedEffect
+                }
+                // Give the tunnel a moment to settle before the first probe.
+                kotlinx.coroutines.delay(1500)
+                mainViewModel.testCurrentServerRealPing()
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    sessionSeconds += 1
+                    // Re-probe every couple of minutes so the figure stays meaningful.
+                    if (sessionSeconds % 120 == 0L) mainViewModel.testCurrentServerRealPing()
+                }
+            }
+
+            // Latency arrives asynchronously as a status update from the daemon.
+            LaunchedEffect(uiState.status) {
+                (uiState.status as? MainStatus.ConnectionTest)?.let {
+                    latencyMillis = it.result.delayMillis
+                }
             }
 
             // A crash report from the previous run takes over the screen until dismissed.
@@ -141,7 +171,7 @@ class FandoghActivity : BaseComponentActivity() {
 
             val homeState = HomeState(
                 connected = uiState.isRunning,
-                connecting = uiState.status is MainStatus.Testing,
+                connecting = uiState.status is MainStatus.Testing && !uiState.isRunning,
                 statusText = stringResource(
                     if (uiState.isRunning) R.string.fandogh_connected else R.string.fandogh_disconnected
                 ),
@@ -153,7 +183,11 @@ class FandoghActivity : BaseComponentActivity() {
                 protocol = profile?.configType?.name?.lowercase()
                     ?.replaceFirstChar { it.uppercase() },
                 serverName = profile?.remarks,
-                serverDetail = profile?.server
+                serverDetail = profile?.server,
+                sessionSeconds = sessionSeconds,
+                downSpeed = totals.downSpeed,
+                upSpeed = totals.upSpeed,
+                latencyMillis = latencyMillis
             )
 
             Box(
@@ -241,9 +275,7 @@ class FandoghActivity : BaseComponentActivity() {
                                         usage = usage,
                                         localUsedBytes = totals.monthTotal,
                                         busy = busy,
-                                        message = message,
-                                        currentServerName = profile?.remarks,
-                                        serverCount = servers.size
+                                        message = message
                                     ),
                                     onUrlChange = { subscriptionUrl = it },
                                     onSaveSubscription = {
@@ -266,8 +298,7 @@ class FandoghActivity : BaseComponentActivity() {
                                                 null
                                             }
                                         }
-                                    },
-                                    onChangeProfile = { showPicker = true }
+                                    }
                                 )
                             }
                         }
@@ -329,6 +360,13 @@ class FandoghActivity : BaseComponentActivity() {
     /**
      * Stores the subscription link and pulls its servers.
      *
+     * The earlier version wrote the record and then fired MainAction.UpdateSubscriptions,
+     * which resolves against the currently selected group — for a link being added for
+     * the first time there is no such group, so nothing was ever fetched and the tab
+     * stayed empty. This follows the path the classic editor uses instead: mint the guid
+     * up front so the new record can be addressed, then hand that id to
+     * SubscriptionUpdater, which does the fetch and import in the background worker.
+     *
      * Replacing the URL invalidates any cached allowance, so the quota card cannot show
      * the previous panel's numbers against the new one.
      */
@@ -344,31 +382,48 @@ class FandoghActivity : BaseComponentActivity() {
             setMessage(getString(R.string.fandogh_enter_link_first))
             return
         }
-        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+        if (!Utils.isValidUrl(trimmed)) {
             setMessage(getString(R.string.fandogh_invalid_link))
             return
         }
 
-        val existing = existingGuid?.let { MmkvManager.decodeSubscription(it) }
+        val guid = existingGuid?.takeIf { it.isNotBlank() } ?: Utils.getUuid()
+        val existing = MmkvManager.decodeSubscription(guid)
         val changed = existing?.url != trimmed
         val item = (existing ?: SubscriptionItem()).apply {
-            remarks = remarks.ifBlank { getString(R.string.app_name) }
+            if (remarks.isBlank()) remarks = getString(R.string.app_name)
             this.url = trimmed
             enabled = true
+            // 3x-ui links are https; allow the insecure-scheme guard to pass either way
+            // rather than silently refusing a link the user pasted from their panel.
+            allowInsecureUrl = true
         }
-        MmkvManager.encodeSubscription(existingGuid.orEmpty(), item)
+        MmkvManager.encodeSubscription(guid, item)
         if (changed) SubscriptionUsageRepository.clear()
 
         setBusy(true)
         setMessage(null)
-        mainViewModel.onAction(MainAction.UpdateSubscriptions)
+        SubscriptionUpdater.syncOne(this, guid)
+
         scopeLaunch {
-            // Give the update a moment to land before reading the panel's quota header.
-            kotlinx.coroutines.delay(2500)
+            // The update runs in a worker; poll briefly for the servers to land rather
+            // than reporting success the instant the request is queued.
+            var found = 0
+            repeat(12) {
+                kotlinx.coroutines.delay(1000)
+                found = MmkvManager.decodeServerList(guid).size
+                if (found > 0) return@repeat
+            }
             SubscriptionUsageRepository.refresh()
             mainViewModel.setupGroupTab(forceRefresh = true)
             setBusy(false)
-            setMessage(getString(R.string.fandogh_subscription_saved))
+            setMessage(
+                if (found > 0) {
+                    getString(R.string.fandogh_subscription_saved_count, found)
+                } else {
+                    getString(R.string.fandogh_subscription_empty)
+                }
+            )
         }
     }
 

@@ -617,4 +617,9 @@
     <string name="fandogh_crash_subtitle">اجرای قبلی با این خطا تمام شد</string>
     <string name="fandogh_crash_copy">کپی گزارش</string>
     <string name="fandogh_crash_continue">ادامه</string>
+    <!-- Home live tiles and subscription results -->
+    <string name="fandogh_latency">پینگ</string>
+    <string name="fandogh_session">مدت اتصال</string>
+    <string name="fandogh_subscription_empty">سروری برنگشت — لینک را بررسی کنید</string>
+    <string name="fandogh_subscription_saved_count">%1$d سرور وارد شد</string>
 </resources>

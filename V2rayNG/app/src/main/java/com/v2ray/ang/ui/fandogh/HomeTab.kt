@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,7 +37,12 @@ data class HomeState(
     val detailText: String? = null,
     val protocol: String? = null,
     val serverName: String? = null,
-    val serverDetail: String? = null
+    val serverDetail: String? = null,
+    val sessionSeconds: Long = 0,
+    val downSpeed: Long = 0,
+    val upSpeed: Long = 0,
+    /** Null while a measurement is in flight, -1 when the last one failed. */
+    val latencyMillis: Long? = null
 )
 
 @Composable
@@ -77,7 +83,139 @@ fun HomeTab(
         }
 
         ServerCard(state, onPickServer)
+        Spacer(Modifier.height(12.dp))
+        LiveTiles(state)
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+/**
+ * Download / upload / latency, shown only while connected — the figures are meaningless
+ * otherwise and an idle row of zeroes reads as a fault.
+ */
+@Composable
+private fun LiveTiles(state: HomeState) {
+    if (!state.connected) return
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        LiveTile(
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.fandogh_download),
+            value = formatBytes(state.downSpeed).first,
+            unit = formatBytes(state.downSpeed).second + "/s",
+            accent = FandoghColors.DownloadAccent
+        ) { tint -> TileArrow(down = true, color = tint, modifier = Modifier.size(20.dp)) }
+
+        LiveTile(
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.fandogh_upload),
+            value = formatBytes(state.upSpeed).first,
+            unit = formatBytes(state.upSpeed).second + "/s",
+            accent = FandoghColors.UploadAccent
+        ) { tint -> TileArrow(down = false, color = tint, modifier = Modifier.size(20.dp)) }
+
+        val latency = state.latencyMillis
+        LiveTile(
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.fandogh_latency),
+            value = when {
+                latency == null -> "..."
+                latency < 0 -> "--"
+                else -> latency.toString()
+            },
+            unit = "ms",
+            accent = when {
+                latency == null || latency < 0 -> FandoghColors.TextTertiary
+                latency < 300 -> FandoghColors.AccentGreen
+                latency < 800 -> FandoghColors.Warning
+                else -> FandoghColors.Danger
+            }
+        ) { tint -> RefreshGlyph(tint, Modifier.size(20.dp)) }
+    }
+}
+
+@Composable
+private fun LiveTile(
+    label: String,
+    value: String,
+    unit: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    icon: @Composable (Color) -> Unit
+) {
+    GlassCard(modifier = modifier, contentPadding = PaddingValues(14.dp)) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(accent.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) { icon(accent) }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = value,
+                color = FandoghColors.TextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+            Spacer(Modifier.size(4.dp))
+            Text(
+                text = unit,
+                color = FandoghColors.TextSecondary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 3.dp)
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = label.uppercase(),
+            color = FandoghColors.TextTertiary,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun TileArrow(down: Boolean, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = 2.dp.toPx(),
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+            join = androidx.compose.ui.graphics.StrokeJoin.Round
+        )
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.5f, if (down) h * 0.16f else h * 0.84f)
+            lineTo(w * 0.5f, if (down) h * 0.84f else h * 0.16f)
+            moveTo(w * 0.24f, if (down) h * 0.56f else h * 0.44f)
+            lineTo(w * 0.5f, if (down) h * 0.84f else h * 0.16f)
+            lineTo(w * 0.76f, if (down) h * 0.56f else h * 0.44f)
+        }
+        drawPath(path, color, style = stroke)
+    }
+}
+
+@Composable
+private fun RefreshGlyph(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+        val inset = size.minDimension * 0.18f
+        drawArc(
+            color = color,
+            startAngle = 40f,
+            sweepAngle = 280f,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+            size = androidx.compose.ui.geometry.Size(
+                size.width - inset * 2,
+                size.height - inset * 2
+            ),
+            style = stroke
+        )
     }
 }
 
@@ -138,25 +276,47 @@ private fun StatusCard(state: HomeState) {
                 }
             }
             if (state.protocol != null) {
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = stringResource(R.string.fandogh_protocol).uppercase(),
-                        color = FandoghColors.TextSecondary,
-                        fontSize = 11.sp,
-                        letterSpacing = 1.2.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = state.protocol,
-                        color = FandoghColors.TextPrimary,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
+                StatusMetric(
+                    label = stringResource(R.string.fandogh_protocol),
+                    value = state.protocol
+                )
+            }
+            if (state.connected) {
+                Spacer(Modifier.size(18.dp))
+                StatusMetric(
+                    label = stringResource(R.string.fandogh_session),
+                    value = formatDuration(state.sessionSeconds)
+                )
             }
         }
     }
+}
+
+@Composable
+private fun StatusMetric(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.End) {
+        Text(
+            text = label.uppercase(),
+            color = FandoghColors.TextSecondary,
+            fontSize = 11.sp,
+            letterSpacing = 1.2.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = value,
+            color = FandoghColors.TextPrimary,
+            fontSize = 19.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+}
+
+/** hh:mm:ss, as the reference status card shows it. */
+private fun formatDuration(seconds: Long): String {
+    val s = seconds.coerceAtLeast(0)
+    return String.format("%02d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
 }
 
 @Composable

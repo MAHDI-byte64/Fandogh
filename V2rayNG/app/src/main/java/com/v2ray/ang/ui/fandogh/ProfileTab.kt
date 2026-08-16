@@ -63,9 +63,7 @@ data class ProfileTabState(
     val usage: SubscriptionUsage? = null,
     val localUsedBytes: Long = 0,
     val busy: Boolean = false,
-    val message: String? = null,
-    val currentServerName: String? = null,
-    val serverCount: Int = 0
+    val message: String? = null
 )
 
 @Composable
@@ -74,7 +72,6 @@ fun ProfileTab(
     onUrlChange: (String) -> Unit,
     onSaveSubscription: () -> Unit,
     onRefreshUsage: () -> Unit,
-    onChangeProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -97,12 +94,6 @@ fun ProfileTab(
             onRefresh = onRefreshUsage
         )
 
-        Spacer(Modifier.height(16.dp))
-        CurrentProfileCard(
-            serverName = state.currentServerName,
-            serverCount = state.serverCount,
-            onChangeProfile = onChangeProfile
-        )
 
         Spacer(Modifier.height(16.dp))
         SubscriptionCard(
@@ -264,52 +255,6 @@ private fun QuotaCard(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun CurrentProfileCard(
-    serverName: String?,
-    serverCount: Int,
-    onChangeProfile: () -> Unit
-) {
-    GlassCard(contentPadding = PaddingValues(20.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            LeadingTile(FandoghColors.AccentBlue) {
-                GlobeGlyph(Modifier.size(24.dp))
-            }
-            Spacer(Modifier.size(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.fandogh_current_profile),
-                    color = FandoghColors.TextSecondary,
-                    fontSize = 13.sp
-                )
-                Text(
-                    text = serverName ?: stringResource(R.string.fandogh_no_server),
-                    color = FandoghColors.TextPrimary,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        GradientButton(
-            text = stringResource(R.string.fandogh_change_profile),
-            onClick = onChangeProfile
-        )
-        if (serverCount > 0) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = stringResource(R.string.fandogh_server_count, serverCount),
-                color = FandoghColors.TextTertiary,
-                fontSize = 13.sp,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
         }
     }
 }
