@@ -1,5 +1,9 @@
 package com.v2ray.ang.ui.fandogh
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +41,8 @@ fun StatsTab(
     totals: TrafficTracker.Totals,
     quotaBytes: Long?,
     connected: Boolean,
+    speedPhase: SpeedTestRunner.Phase,
+    onRunSpeedTest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -81,6 +87,9 @@ fun StatsTab(
 
         Spacer(Modifier.height(26.dp))
         LiveSpeedCard(totals, connected)
+
+        Spacer(Modifier.height(26.dp))
+        SpeedTestCard(phase = speedPhase, connected = connected, onRun = onRunSpeedTest)
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -301,3 +310,189 @@ private fun ArrowGlyph(up: Boolean, color: Color, modifier: Modifier = Modifier)
         drawPath(head, color, style = stroke)
     }
 }
+
+/**
+ * On-demand throughput measurement.
+ *
+ * The live readout above only shows traffic the user happens to be generating, so it
+ * reads zero on an idle connection. This deliberately generates traffic, which is the
+ * only way to answer "how fast is this server actually".
+ */
+@Composable
+private fun SpeedTestCard(
+    phase: SpeedTestRunner.Phase,
+    connected: Boolean,
+    onRun: () -> Unit
+) {
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.fandogh_speed_test),
+                    color = FandoghColors.TextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = when (phase) {
+                        is SpeedTestRunner.Phase.Failed ->
+                            stringResource(
+                                if (phase.reason == SpeedTestRunner.Reason.NotConnected) {
+                                    R.string.fandogh_speed_test_offline
+                                } else {
+                                    R.string.fandogh_speed_test_failed
+                                }
+                            )
+
+                        else -> stringResource(R.string.fandogh_speed_test_hint)
+                    },
+                    color = FandoghColors.TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        when (phase) {
+            is SpeedTestRunner.Phase.Download, is SpeedTestRunner.Phase.Upload,
+            SpeedTestRunner.Phase.Connecting -> RunningReadout(phase)
+
+            is SpeedTestRunner.Phase.Done -> Row(Modifier.fillMaxWidth()) {
+                ResultColumn(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.fandogh_download),
+                    mbps = phase.downloadMbps,
+                    accent = FandoghColors.DownloadAccent
+                )
+                ResultColumn(
+                    modifier = Modifier.weight(1f),
+                    label = stringResource(R.string.fandogh_upload),
+                    mbps = phase.uploadMbps,
+                    accent = FandoghColors.UploadAccent
+                )
+            }
+
+            else -> Unit
+        }
+
+        if (phase !is SpeedTestRunner.Phase.Connecting &&
+            phase !is SpeedTestRunner.Phase.Download &&
+            phase !is SpeedTestRunner.Phase.Upload
+        ) {
+            Spacer(Modifier.height(if (phase is SpeedTestRunner.Phase.Done) 18.dp else 0.dp))
+            GradientButton(
+                text = stringResource(
+                    if (phase is SpeedTestRunner.Phase.Done) {
+                        R.string.fandogh_speed_test_again
+                    } else {
+                        R.string.fandogh_speed_test_start
+                    }
+                ),
+                enabled = connected,
+                onClick = onRun
+            )
+        }
+    }
+}
+
+@Composable
+private fun RunningReadout(phase: SpeedTestRunner.Phase) {
+    val label = when (phase) {
+        is SpeedTestRunner.Phase.Download -> stringResource(R.string.fandogh_download)
+        is SpeedTestRunner.Phase.Upload -> stringResource(R.string.fandogh_upload)
+        else -> stringResource(R.string.fandogh_speed_test_connecting)
+    }
+    val mbps = when (phase) {
+        is SpeedTestRunner.Phase.Download -> phase.mbps
+        is SpeedTestRunner.Phase.Upload -> phase.mbps
+        else -> 0.0
+    }
+    val progress = when (phase) {
+        is SpeedTestRunner.Phase.Download -> phase.progress
+        is SpeedTestRunner.Phase.Upload -> phase.progress
+        else -> 0f
+    }
+    val accent = if (phase is SpeedTestRunner.Phase.Upload) {
+        FandoghColors.UploadAccent
+    } else {
+        FandoghColors.DownloadAccent
+    }
+    val animatedProgress by animateFloatAsState(progress, tween(300), label = "speedProgress")
+
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = label.uppercase(),
+            color = FandoghColors.TextSecondary,
+            fontSize = 10.sp,
+            letterSpacing = 1.1.sp
+        )
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = formatMbps(mbps),
+                color = accent,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "Mbps",
+                color = FandoghColors.TextSecondary,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White.copy(alpha = 0.10f))
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(accent)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultColumn(label: String, mbps: Double, accent: Color, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            text = label.uppercase(),
+            color = FandoghColors.TextSecondary,
+            fontSize = 10.sp,
+            letterSpacing = 1.1.sp
+        )
+        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = formatMbps(mbps),
+                color = accent,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = "Mbps",
+                color = FandoghColors.TextSecondary,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+    }
+}
+
+/** Sub-10 figures need a decimal to be meaningful; above that it is noise. */
+private fun formatMbps(mbps: Double): String =
+    if (mbps < 10) String.format("%.1f", mbps) else mbps.toInt().toString()

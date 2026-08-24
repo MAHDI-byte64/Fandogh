@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -151,6 +153,7 @@ fun GradientButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     brush: Brush = FandoghColors.CtaGradient
 ) {
     Box(
@@ -158,8 +161,11 @@ fun GradientButton(
             .fillMaxWidth()
             .height(54.dp)
             .clip(RoundedCornerShape(FandoghRadius.pill))
+            // Dimmed rather than hidden: a button that vanishes leaves the user
+            // wondering where the feature went.
+            .alpha(if (enabled) 1f else 0.45f)
             .background(brush)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -612,6 +618,45 @@ fun GaugeBreakdown(
                     content = metrics
                 )
             }
+        }
+    }
+}
+
+/**
+ * Square tile identifying a server by its country flag.
+ *
+ * Falls back to the globe when the name names no country, so an unrecognised server
+ * still gets a tile of the same size and the rows stay aligned.
+ */
+@Composable
+fun ServerFlagTile(
+    serverName: String?,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    tint: Color = FandoghColors.AccentBlue
+) {
+    val flag = remember(serverName) { serverName?.let { CountryFlags.forName(it) } }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(FandoghRadius.tile))
+            .background(tint.copy(alpha = 0.14f))
+            .border(
+                BorderStroke(1.dp, tint.copy(alpha = 0.32f)),
+                RoundedCornerShape(FandoghRadius.tile)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (flag != null) {
+            Text(
+                text = flag,
+                // Emoji render tall for their point size; this keeps the glyph inside
+                // the tile instead of clipping against the rounded corners.
+                fontSize = (size.value * 0.46f).sp,
+                lineHeight = (size.value * 0.52f).sp
+            )
+        } else {
+            GlobeGlyph(Modifier.size(size * 0.5f))
         }
     }
 }

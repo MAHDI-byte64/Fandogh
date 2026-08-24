@@ -110,7 +110,7 @@ object HttpUtil {
      * @return The content of the URL as a string.
      */
     fun getUrlContent(request: UrlContentRequest): String? {
-        val url = request.url ?: return null
+        val url = request.url ?: return emptyMap()
         val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
         val requestBuilder = Request.Builder()
             .url(url)
@@ -216,8 +216,17 @@ object HttpUtil {
      *
      * @return the header value, or null when the request fails or the header is absent.
      */
-    fun getUrlResponseHeader(request: UrlContentRequest, name: String): String? {
-        val url = request.url ?: return null
+    fun getUrlResponseHeader(request: UrlContentRequest, name: String): String? =
+        getUrlResponseHeaders(request, listOf(name))[name.lowercase()]
+
+    /**
+     * Reads several response headers in one request.
+     *
+     * Subscription panels spread the account's metadata across a handful of headers, and
+     * fetching the list once per header would hit the panel repeatedly for one screen.
+     */
+    fun getUrlResponseHeaders(request: UrlContentRequest, names: List<String>): Map<String, String> {
+        val url = request.url ?: return emptyMap()
         val client = buildOkHttpClient(
             request.timeout,
             request.httpPort,
@@ -247,11 +256,13 @@ object HttpUtil {
 
         return try {
             client.newCall(requestBuilder.build()).execute().use { response ->
-                response.header(name)
+                names.mapNotNull { header ->
+                    response.header(header)?.let { header.lowercase() to it }
+                }.toMap()
             }
         } catch (e: Exception) {
-            LogUtil.w(AppConfig.TAG, "Failed to read header '$name': ${e.message}")
-            null
+            LogUtil.w(AppConfig.TAG, "Failed to read headers $names: ${e.message}")
+            emptyMap()
         }
     }
 

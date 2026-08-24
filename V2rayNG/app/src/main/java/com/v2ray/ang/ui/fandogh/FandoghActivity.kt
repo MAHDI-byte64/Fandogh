@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.net.toUri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -76,6 +77,9 @@ import kotlinx.coroutines.withContext
 
 private const val KEY_ONBOARDED = "fandogh_onboarded"
 
+/** How long a latency probe may run before the tile stops claiming to be measuring. */
+private const val PING_TIMEOUT_MILLIS = 6_000L
+
 /**
  * Fandogh's own front end.
  *
@@ -129,6 +133,8 @@ class FandoghActivity : BaseComponentActivity() {
             val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
             val totals by TrafficTracker.totals.collectAsStateWithLifecycle()
             val usage by SubscriptionUsageRepository.usage.collectAsStateWithLifecycle()
+            val details by SubscriptionUsageRepository.details.collectAsStateWithLifecycle()
+            val speedPhase by SpeedTestRunner.phase.collectAsStateWithLifecycle()
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
 
@@ -146,6 +152,20 @@ class FandoghActivity : BaseComponentActivity() {
             // Session clock and a latency probe, both scoped to the current connection.
             var sessionSeconds by remember { mutableStateOf(0L) }
             var latencyMillis by remember { mutableStateOf<Long?>(null) }
+            var pinging by remember { mutableStateOf(false) }
+
+            // A repeat probe can return the identical figure, which changes no state and
+            // would leave the tile spinning forever. The timeout is what actually ends
+            // the measuring state; the result below just ends it sooner.
+            fun probeLatency() {
+                if (!mainViewModel.uiState.value.isRunning || pinging) return
+                pinging = true
+                mainViewModel.testCurrentServerRealPing()
+                scope.launch {
+                    kotlinx.coroutines.delay(PING_TIMEOUT_MILLIS)
+                    pinging = false
+                }
+            }
 
             LaunchedEffect(uiState.isRunning) {
                 if (!uiState.isRunning) {
@@ -156,12 +176,12 @@ class FandoghActivity : BaseComponentActivity() {
                 }
                 // Give the tunnel a moment to settle before the first probe.
                 kotlinx.coroutines.delay(1500)
-                mainViewModel.testCurrentServerRealPing()
+                probeLatency()
                 while (true) {
                     kotlinx.coroutines.delay(1000)
                     sessionSeconds += 1
                     // Re-probe every couple of minutes so the figure stays meaningful.
-                    if (sessionSeconds % 120 == 0L) mainViewModel.testCurrentServerRealPing()
+                    if (sessionSeconds % 120 == 0L) probeLatency()
                 }
             }
 
@@ -169,6 +189,7 @@ class FandoghActivity : BaseComponentActivity() {
             LaunchedEffect(uiState.status) {
                 (uiState.status as? MainStatus.ConnectionTest)?.let {
                     latencyMillis = it.result.delayMillis
+                    pinging = false
                 }
             }
 
@@ -217,6 +238,12 @@ class FandoghActivity : BaseComponentActivity() {
                 pickableServers(uiState.selectedGroupId)
             }
 
+            // Lowest measured latency wins; untested servers report 0 and would
+            // otherwise sort to the front as if they were instant.
+            val fastest = remember(servers) {
+                servers.filter { it.delayMillis > 0 }.minByOrNull { it.delayMillis }
+            }
+
             val homeState = HomeState(
                 connected = uiState.isRunning,
                 connecting = uiState.status is MainStatus.Testing && !uiState.isRunning,
@@ -235,7 +262,8 @@ class FandoghActivity : BaseComponentActivity() {
                 sessionSeconds = sessionSeconds,
                 downSpeed = totals.downSpeed,
                 upSpeed = totals.upSpeed,
-                latencyMillis = latencyMillis
+                latencyMillis = latencyMillis,
+                pinging = pinging
             )
 
             Box(
@@ -341,6 +369,11 @@ class FandoghActivity : BaseComponentActivity() {
                             MmkvManager.encodeSettings(AppConfig.PREF_SPEED_ENABLED, it)
                             settingsState = settingsState.copy(showSpeedNotification = it)
                         },
+                        onToggleStartOnBoot = {
+                            MmkvManager.encodeStartOnBoot(it)
+                            settingsState = settingsState.copy(startOnBoot = it)
+                        },
+                        onOpenKillSwitch = { openVpnSystemSettings() },
                         onOpenPerApp = {
                             startActivity(Intent(context, PerAppProxyActivity::class.java))
                         },
@@ -367,12 +400,19 @@ class FandoghActivity : BaseComponentActivity() {
                                         settingsState = readVpnSettings()
                                         showSettings = true
                                     },
-                                    onPickServer = { showPicker = true }
+                                    onPickServer = { showPicker = true },
+                                    onPing = { probeLatency() }
                                 )
 
                                 1 -> StatsTab(
                                     totals = totals,
                                     quotaBytes = usage?.totalBytes,
+                                    speedPhase = speedPhase,
+                                    onRunSpeedTest = {
+                                        scope.launch {
+                                            SpeedTestRunner.run(mainViewModel.uiState.value.isRunning)
+                                        }
+                                    },
                                     connected = uiState.isRunning
                                 )
 
@@ -381,7 +421,14 @@ class FandoghActivity : BaseComponentActivity() {
                                         subscriptionUrl = subscriptionUrl,
                                         savedSubscriptionUrl = savedSubscription?.second?.url.orEmpty(),
                                         usage = usage,
+                                        details = details,
                                         localUsedBytes = totals.monthTotal,
+                                        todayUsedBytes = totals.todayTotal,
+                                        monthUsedBytes = totals.monthTotal,
+                                        serverCount = servers.size,
+                                        fastestServerName = fastest?.name,
+                                        fastestServerPing = fastest?.delayMillis ?: 0L,
+                                        connected = uiState.isRunning,
                                         busy = busy,
                                         message = message
                                     ),
@@ -406,6 +453,14 @@ class FandoghActivity : BaseComponentActivity() {
                                                 null
                                             }
                                         }
+                                    },
+                                    onShareSubscription = {
+                                        shareText(savedSubscription?.second?.url.orEmpty())
+                                    },
+                                    onOpenSupport = { openLink(it) },
+                                    onOpenSettings = {
+                                        settingsState = readVpnSettings()
+                                        showSettings = true
                                     }
                                 )
                             } }
@@ -441,6 +496,38 @@ class FandoghActivity : BaseComponentActivity() {
                             if (!started) {
                                 context.toastError(R.string.fandogh_test_unavailable)
                             }
+                        },
+                        onAutoSelect = {
+                            val started = pingTest.start(
+                                guids = servers.map { it.guid },
+                                groupId = uiState.selectedGroupId,
+                                scope = scope,
+                                autoSelect = true
+                            ) {
+                                // Read the delays back from storage after the batch, not
+                                // from the list captured when the button was pressed —
+                                // that snapshot predates every result.
+                                val best = pickableServers(uiState.selectedGroupId)
+                                    .filter { it.delayMillis > 0 }
+                                    .minByOrNull { it.delayMillis }
+                                if (best == null) {
+                                    context.toastError(R.string.fandogh_no_server_responded)
+                                } else {
+                                    mainViewModel.onAction(MainAction.SelectServer(best.guid))
+                                    if (mainViewModel.uiState.value.isRunning) {
+                                        mainViewModel.onAction(MainAction.RestartService)
+                                    }
+                                    showPicker = false
+                                    context.toastSuccess(
+                                        getString(
+                                            R.string.fandogh_auto_selected,
+                                            CountryFlags.stripFlag(best.name),
+                                            best.delayMillis
+                                        )
+                                    )
+                                }
+                            }
+                            if (!started) context.toastError(R.string.fandogh_test_unavailable)
                         },
                         onAddSubscription = {
                             showPicker = false
@@ -482,6 +569,49 @@ class FandoghActivity : BaseComponentActivity() {
             .firstOrNull { it.subscription.url.isNotBlank() }
             ?.let { it.guid to it.subscription }
 
+    /** Hands the subscription link to whatever the user shares things with. */
+    private fun shareText(text: String) {
+        if (text.isBlank()) return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        runCatching {
+            startActivity(Intent.createChooser(intent, getString(R.string.fandogh_share_subscription)))
+        }.onFailure { toastError(R.string.toast_failure) }
+    }
+
+    /**
+     * Opens a link the panel supplied. The URL comes from the operator's own server, but
+     * it is still third-party text, so anything that is not http(s) is refused rather
+     * than handed to the system to resolve into some other app.
+     */
+    private fun openLink(url: String) {
+        val safe = url.trim()
+        if (!safe.startsWith("http://") && !safe.startsWith("https://")) return
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, safe.toUri()))
+        }.onFailure { toastError(R.string.toast_failure) }
+    }
+
+    /**
+     * Opens Android's own VPN settings, where the kill switch lives.
+     *
+     * Only the system can enforce "block connections without VPN", so the app's job is
+     * to take the user to the switch rather than pretend to own it. Some vendors ship
+     * no such screen, hence the fallback and then the message.
+     */
+    private fun openVpnSystemSettings() {
+        val candidates = listOf(
+            Intent("android.net.vpn.SETTINGS"),
+            Intent(android.provider.Settings.ACTION_VPN_SETTINGS)
+        )
+        for (intent in candidates) {
+            if (runCatching { startActivity(intent); true }.getOrDefault(false)) return
+        }
+        toastError(R.string.fandogh_kill_switch_unavailable)
+    }
+
     private fun readVpnSettings() = VpnSettingsState(
         dnsServers = MmkvManager.decodeSettingsString(AppConfig.PREF_VPN_DNS)
             .orEmpty()
@@ -491,6 +621,7 @@ class FandoghActivity : BaseComponentActivity() {
         attachHttpProxy = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY),
         shareOverWifi = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING),
         showSpeedNotification = MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED),
+        startOnBoot = MmkvManager.decodeStartOnBoot(),
         perAppEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY),
         perAppCount = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET)?.size ?: 0,
         appVersion = BuildConfig.VERSION_NAME

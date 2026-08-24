@@ -46,8 +46,13 @@ class PingTestController(context: Context) {
     var resultTick by mutableIntStateOf(0)
         private set
 
+    /** Set when the batch was started to pick a server rather than just to inform. */
+    var autoSelecting by mutableStateOf(false)
+        private set
+
     private var registered = false
     private var watchdog: Job? = null
+    private var onBatchDone: (() -> Unit)? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -91,8 +96,16 @@ class PingTestController(context: Context) {
      * @return false when there is nothing to test, so the caller can say so instead of
      * leaving the user looking at a button that appears to be ignoring them.
      */
-    fun start(guids: List<String>, groupId: String, scope: CoroutineScope): Boolean {
+    fun start(
+        guids: List<String>,
+        groupId: String,
+        scope: CoroutineScope,
+        autoSelect: Boolean = false,
+        onFinished: (() -> Unit)? = null
+    ): Boolean {
         if (guids.isEmpty() || testing) return false
+        autoSelecting = autoSelect
+        onBatchDone = onFinished
 
         // Drop the previous run's numbers first: a stale delay next to a fresh one is
         // indistinguishable on screen, and a server that has since died would keep
@@ -127,8 +140,14 @@ class PingTestController(context: Context) {
         watchdog = null
         if (!testing) return
         testing = false
+        autoSelecting = false
         progress = ""
         resultTick++
+        // Taken before invoking so a callback that starts another batch cannot be
+        // fired twice by a late finish broadcast.
+        val done = onBatchDone
+        onBatchDone = null
+        done?.invoke()
     }
 
     private companion object {

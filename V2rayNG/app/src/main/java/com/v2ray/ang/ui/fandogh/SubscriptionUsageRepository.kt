@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui.fandogh
 
+import android.util.Base64
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.handler.MmkvManager
@@ -28,6 +29,20 @@ import kotlinx.coroutines.withContext
 object SubscriptionUsageRepository {
 
     private const val HEADER_USERINFO = "subscription-userinfo"
+    private const val HEADER_TITLE = "profile-title"
+    private const val HEADER_ANNOUNCE = "announce"
+    private const val HEADER_ANNOUNCE_URL = "announce-url"
+    private const val HEADER_SUPPORT_URL = "support-url"
+    private const val HEADER_WEB_PAGE = "profile-web-page-url"
+
+    private val ALL_HEADERS = listOf(
+        HEADER_USERINFO, HEADER_TITLE, HEADER_ANNOUNCE,
+        HEADER_ANNOUNCE_URL, HEADER_SUPPORT_URL, HEADER_WEB_PAGE
+    )
+
+    private const val KEY_CACHED_TITLE = "fandogh_sub_title"
+    private const val KEY_CACHED_ANNOUNCE = "fandogh_sub_announce"
+    private const val KEY_CACHED_SUPPORT = "fandogh_sub_support"
 
     private const val KEY_CACHED_UPLOAD = "fandogh_sub_upload"
     private const val KEY_CACHED_DOWNLOAD = "fandogh_sub_download"
@@ -37,6 +52,39 @@ object SubscriptionUsageRepository {
 
     private val _usage = MutableStateFlow(loadCached())
     val usage: StateFlow<SubscriptionUsage?> = _usage.asStateFlow()
+
+    private val _details = MutableStateFlow(loadCachedDetails())
+    val details: StateFlow<SubscriptionDetails> = _details.asStateFlow()
+
+    private fun loadCachedDetails() = SubscriptionDetails(
+        title = MmkvManager.decodeSettingsString(KEY_CACHED_TITLE).orEmpty(),
+        announcement = MmkvManager.decodeSettingsString(KEY_CACHED_ANNOUNCE).orEmpty(),
+        supportUrl = MmkvManager.decodeSettingsString(KEY_CACHED_SUPPORT).orEmpty()
+    )
+
+    private fun cacheDetails(details: SubscriptionDetails) {
+        MmkvManager.encodeSettings(KEY_CACHED_TITLE, details.title)
+        MmkvManager.encodeSettings(KEY_CACHED_ANNOUNCE, details.announcement)
+        MmkvManager.encodeSettings(KEY_CACHED_SUPPORT, details.supportUrl)
+    }
+
+    /**
+     * Panels send these fields base64-encoded about as often as they send them plain,
+     * and there is no header saying which. A decode that round-trips back to printable
+     * text is taken; anything else is treated as already-plain text.
+     */
+    internal fun decodeMaybeBase64(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return ""
+        val decoded = runCatching {
+            String(Base64.decode(trimmed, Base64.DEFAULT or Base64.URL_SAFE), Charsets.UTF_8)
+        }.getOrNull()
+        if (decoded.isNullOrBlank()) return trimmed
+        // Base64 of text decodes to text; base64 of anything else decodes to control
+        // bytes, which is the tell that the header was plain to begin with.
+        val printable = decoded.count { it == '\n' || it == '\r' || it == '\t' || it.code >= 0x20 }
+        return if (printable == decoded.length) decoded else trimmed
+    }
 
     private fun loadCached(): SubscriptionUsage? {
         if (MmkvManager.decodeSettingsLong(KEY_CACHED_AT, 0) == 0L) return null
@@ -63,6 +111,8 @@ object SubscriptionUsageRepository {
         MmkvManager.encodeSettings(KEY_CACHED_AT, 0L)
         MmkvManager.encodeSettings(KEY_CACHED_TOTAL, 0L)
         _usage.value = null
+        cacheDetails(SubscriptionDetails())
+        _details.value = SubscriptionDetails()
     }
 
     /**
@@ -85,32 +135,32 @@ object SubscriptionUsageRepository {
         val userAgent = subscription.subscription.userAgent
         val requestHeaders = subscription.subscription.requestHeaders
 
-        val viaProxy = runCatching {
-            HttpUtil.getUrlResponseHeader(
+        fun fetch(useProxy: Boolean) = runCatching {
+            HttpUtil.getUrlResponseHeaders(
                 UrlContentRequest(
                     url = url,
                     userAgent = userAgent,
                     requestHeaders = requestHeaders,
                     timeout = 15000,
-                    httpPort = SettingsManager.getHttpPort(),
-                    proxyUsername = SettingsManager.getSocksUsername(),
-                    proxyPassword = SettingsManager.getSocksPassword()
+                    httpPort = if (useProxy) SettingsManager.getHttpPort() else 0,
+                    proxyUsername = if (useProxy) SettingsManager.getSocksUsername() else null,
+                    proxyPassword = if (useProxy) SettingsManager.getSocksPassword() else null
                 ),
-                HEADER_USERINFO
+                ALL_HEADERS
             )
-        }.getOrNull()
+        }.getOrNull().orEmpty()
 
-        val header = viaProxy ?: runCatching {
-            HttpUtil.getUrlResponseHeader(
-                UrlContentRequest(
-                    url = url,
-                    userAgent = userAgent,
-                    requestHeaders = requestHeaders
-                ),
-                HEADER_USERINFO
-            )
-        }.getOrNull()
+        val headers = fetch(useProxy = true).ifEmpty { fetch(useProxy = false) }
 
+        _details.value = SubscriptionDetails(
+            title = decodeMaybeBase64(headers[HEADER_TITLE].orEmpty()),
+            announcement = decodeMaybeBase64(headers[HEADER_ANNOUNCE].orEmpty()),
+            supportUrl = headers[HEADER_SUPPORT_URL]
+                ?: headers[HEADER_ANNOUNCE_URL]
+                ?: headers[HEADER_WEB_PAGE].orEmpty()
+        ).also(::cacheDetails)
+
+        val header = headers[HEADER_USERINFO]
         if (header == null) {
             LogUtil.d(AppConfig.TAG, "Panel sent no $HEADER_USERINFO header")
             return@withContext null
@@ -121,7 +171,6 @@ object SubscriptionUsageRepository {
         _usage.value = parsed
         parsed
     }
-
 
     /** Parses `upload=..; download=..; total=..; expire=..` in any order. */
     internal fun parse(header: String): SubscriptionUsage? {
