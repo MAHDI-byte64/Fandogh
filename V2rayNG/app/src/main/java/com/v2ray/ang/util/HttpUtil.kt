@@ -110,7 +110,7 @@ object HttpUtil {
      * @return The content of the URL as a string.
      */
     fun getUrlContent(request: UrlContentRequest): String? {
-        val url = request.url ?: return emptyMap()
+        val url = request.url ?: return null
         val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
         val requestBuilder = Request.Builder()
             .url(url)
