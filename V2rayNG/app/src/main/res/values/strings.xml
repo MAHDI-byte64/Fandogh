@@ -570,6 +570,11 @@
     <string name="fandogh_about_hint">Version and licences</string>
     <string name="fandogh_plan_active">Subscription active</string>
     <string name="fandogh_plan_active_hint">Quota reported by your panel</string>
+    <string name="fandogh_account_details">Account</string>
+    <string name="fandogh_subscription_id">Subscription ID</string>
+    <string name="fandogh_servers_count">Servers</string>
+    <string name="fandogh_expiry_date">Expires</string>
+    <string name="fandogh_not_set">Not set</string>
     <string name="fandogh_last_seven_days">Last 7 days</string>
     <string name="fandogh_section_filtering">Filtering</string>
     <string name="fandogh_section_device">Device</string>
