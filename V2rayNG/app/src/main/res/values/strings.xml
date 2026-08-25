@@ -570,6 +570,14 @@
     <string name="fandogh_about_hint">Version and licences</string>
     <string name="fandogh_plan_active">Subscription active</string>
     <string name="fandogh_plan_active_hint">Quota reported by your panel</string>
+    <string name="fandogh_tab_all">All</string>
+    <string name="fandogh_tab_tunnel">Tunnel</string>
+    <string name="fandogh_continent_europe">Europe</string>
+    <string name="fandogh_continent_asia">Asia</string>
+    <string name="fandogh_continent_north_america">North America</string>
+    <string name="fandogh_continent_south_america">South America</string>
+    <string name="fandogh_continent_africa">Africa</string>
+    <string name="fandogh_continent_oceania">Oceania</string>
     <string name="fandogh_account_details">Account</string>
     <string name="fandogh_subscription_id">Subscription ID</string>
     <string name="fandogh_servers_count">Servers</string>

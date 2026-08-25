@@ -102,22 +102,38 @@ object CountryFlags {
 
     private val TOKEN = Regex("[A-Za-z]{2,}")
 
+    /** Turns 🇩🇪 back into "DE", so a flag the operator typed still identifies a country. */
+    private fun flagToCode(flag: String): String? {
+        val points = flag.codePoints().toArray()
+        if (points.size != 2) return null
+        val a = points[0] - 0x1F1E6
+        val b = points[1] - 0x1F1E6
+        if (a !in 0..25 || b !in 0..25) return null
+        return "${'A' + a}${'A' + b}"
+    }
+
+    /**
+     * The ISO country code a server name resolves to, or null when it names no country.
+     *
+     * This is the single place the resolution order lives: a flag the operator typed,
+     * then a country name, then a bare code. [forName] and [continentOf] both read it,
+     * so the flag on a row and the tab it lands in can never disagree.
+     */
+    fun codeForName(name: String): String? {
+        existingFlag(name)?.let { flag -> flagToCode(flag)?.let { return it } }
+
+        val lower = name.lowercase()
+        NAMES.firstOrNull { lower.contains(it.first) }?.let { return it.second }
+
+        return TOKEN.findAll(name)
+            .map { it.value.uppercase() }
+            .firstOrNull { it.length == 2 && it in CODES }
+    }
+
     /**
      * The flag emoji for a server name, or null when the name names no country.
      */
-    fun forName(name: String): String? {
-        existingFlag(name)?.let { return it }
-
-        val lower = name.lowercase()
-        NAMES.firstOrNull { lower.contains(it.first) }?.let { return codeToFlag(it.second) }
-
-        TOKEN.findAll(name)
-            .map { it.value.uppercase() }
-            .firstOrNull { it.length == 2 && it in CODES }
-            ?.let { return codeToFlag(it) }
-
-        return null
-    }
+    fun forName(name: String): String? = codeForName(name)?.let { codeToFlag(it) }
 
     /**
      * The name with any flag emoji removed, so a row showing the flag separately does
