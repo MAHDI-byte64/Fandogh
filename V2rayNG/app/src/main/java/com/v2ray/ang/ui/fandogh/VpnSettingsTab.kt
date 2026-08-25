@@ -44,6 +44,7 @@ data class VpnSettingsState(
     val shareOverWifi: Boolean = false,
     val showSpeedNotification: Boolean = false,
     val startOnBoot: Boolean = false,
+    val filters: ContentFilters.State = ContentFilters.State(),
     val perAppEnabled: Boolean = false,
     val perAppCount: Int = 0,
     val appVersion: String = ""
@@ -65,6 +66,7 @@ fun VpnSettingsTab(
     onToggleShareOverWifi: (Boolean) -> Unit,
     onToggleSpeedNotification: (Boolean) -> Unit,
     onToggleStartOnBoot: (Boolean) -> Unit,
+    onToggleFilter: (ContentFilters.Filter, Boolean) -> Unit,
     onOpenKillSwitch: () -> Unit,
     onOpenPerApp: () -> Unit,
     onOpenAdvanced: () -> Unit,
@@ -148,6 +150,39 @@ fun VpnSettingsTab(
             onCheckedChange = onToggleSpeedNotification
         )
 
+        Spacer(Modifier.height(26.dp))
+        SectionLabel(stringResource(R.string.fandogh_section_filtering))
+        Spacer(Modifier.height(12.dp))
+        SwitchCard(
+            title = stringResource(R.string.fandogh_block_ads),
+            subtitle = stringResource(R.string.fandogh_block_ads_hint),
+            checked = state.filters.blockAds,
+            onCheckedChange = { onToggleFilter(ContentFilters.Filter.Ads, it) }
+        )
+        Spacer(Modifier.height(12.dp))
+        SwitchCard(
+            title = stringResource(R.string.fandogh_block_trackers),
+            subtitle = stringResource(R.string.fandogh_block_trackers_hint),
+            checked = state.filters.blockTrackers,
+            onCheckedChange = { onToggleFilter(ContentFilters.Filter.Trackers, it) }
+        )
+        Spacer(Modifier.height(12.dp))
+        SwitchCard(
+            title = stringResource(R.string.fandogh_block_malware),
+            subtitle = stringResource(R.string.fandogh_block_malware_hint),
+            checked = state.filters.blockMalware,
+            onCheckedChange = { onToggleFilter(ContentFilters.Filter.Malware, it) }
+        )
+        Spacer(Modifier.height(12.dp))
+        SwitchCard(
+            title = stringResource(R.string.fandogh_direct_iran),
+            subtitle = stringResource(R.string.fandogh_direct_iran_hint),
+            checked = state.filters.directIran,
+            onCheckedChange = { onToggleFilter(ContentFilters.Filter.DirectIran, it) }
+        )
+
+        Spacer(Modifier.height(26.dp))
+        SectionLabel(stringResource(R.string.fandogh_section_device))
         Spacer(Modifier.height(12.dp))
         SwitchCard(
             title = stringResource(R.string.fandogh_start_on_boot),

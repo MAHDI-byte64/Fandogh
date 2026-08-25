@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +86,9 @@ fun StatsTab(
                 up = false
             )
         }
+
+        Spacer(Modifier.height(26.dp))
+        HistoryCard(days = remember(totals.todayTotal) { TrafficTracker.history(totals) })
 
         Spacer(Modifier.height(26.dp))
         LiveSpeedCard(totals, connected)
@@ -496,3 +501,98 @@ private fun ResultColumn(label: String, mbps: Double, accent: Color, modifier: M
 /** Sub-10 figures need a decimal to be meaningful; above that it is noise. */
 private fun formatMbps(mbps: Double): String =
     if (mbps < 10) String.format("%.1f", mbps) else mbps.toInt().toString()
+
+/**
+ * Seven days of traffic as bars.
+ *
+ * Bars are scaled against the busiest day rather than an absolute figure, so a quiet
+ * week is still readable instead of rendering as seven flat lines. Days with no traffic
+ * keep a visible stub so the axis reads as a week rather than as missing data.
+ */
+@Composable
+private fun HistoryCard(days: List<TrafficTracker.DayUsage>) {
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                stringResource(R.string.fandogh_last_seven_days),
+                color = FandoghColors.TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = formatBytesLabel(days.sumOf { it.bytes }),
+                color = FandoghColors.AccentBlueBright,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        val peak = days.maxOfOrNull { it.bytes }?.coerceAtLeast(1L) ?: 1L
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            days.forEachIndexed { index, day ->
+                val isToday = index == days.lastIndex
+                val fraction = (day.bytes.toFloat() / peak).coerceIn(0f, 1f)
+                val animated by animateFloatAsState(
+                    targetValue = fraction,
+                    animationSpec = tween(650),
+                    label = "bar$index"
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                // A floor of 4% keeps an empty day visible as an empty
+                                // day rather than as nothing at all.
+                                .fillMaxHeight((animated * 0.96f + 0.04f).coerceIn(0.04f, 1f))
+                                .clip(RoundedCornerShape(topStart = 7.dp, topEnd = 7.dp, bottomStart = 3.dp, bottomEnd = 3.dp))
+                                .background(
+                                    if (isToday) {
+                                        Brush.verticalGradient(
+                                            listOf(FandoghColors.AccentGreen, FandoghColors.AccentBlue)
+                                        )
+                                    } else {
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                FandoghColors.AccentBlueBright.copy(alpha = 0.75f),
+                                                FandoghColors.AccentBlue.copy(alpha = 0.35f)
+                                            )
+                                        )
+                                    }
+                                )
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = day.label,
+                        color = if (isToday) FandoghColors.AccentGreen else FandoghColors.TextTertiary,
+                        fontSize = 11.sp,
+                        fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
