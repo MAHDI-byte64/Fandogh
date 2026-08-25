@@ -83,9 +83,17 @@ object SubscriptionUsageRepository {
         if (trimmed.startsWith(BASE64_PREFIX, ignoreCase = true)) {
             trimmed = trimmed.removeRange(0, BASE64_PREFIX.length).trim()
         }
-        val decoded = runCatching {
-            String(Base64.decode(trimmed, Base64.DEFAULT or Base64.URL_SAFE), Charsets.UTF_8)
-        }.getOrNull()
+        // DEFAULT and URL_SAFE are alternative alphabets, not flags to combine: ORing
+        // them yields URL_SAFE alone, which rejects the '+' and '/' that standard base64
+        // is full of. That is why a correctly-prefixed header still failed to decode.
+        // Standard first, then the URL-safe alphabet for panels that use it.
+        val decoded = sequenceOf(Base64.DEFAULT, Base64.URL_SAFE)
+            .mapNotNull { flags ->
+                runCatching {
+                    String(Base64.decode(trimmed, flags), Charsets.UTF_8)
+                }.getOrNull()
+            }
+            .firstOrNull { it.isNotBlank() }
         if (decoded.isNullOrBlank()) return trimmed
         // Base64 of text decodes to text; base64 of anything else decodes to control
         // bytes, which is the tell that the header was plain to begin with.

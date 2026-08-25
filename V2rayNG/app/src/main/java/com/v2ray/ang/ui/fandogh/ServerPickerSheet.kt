@@ -55,8 +55,16 @@ data class PickableServer(
     val delayMillis: Long
 )
 
-/** Flag tile plus its padding. Fixed so the list height can be computed, not measured. */
-private val SERVER_ROW_HEIGHT = 72.dp
+/**
+ * A row's minimum height, and the pitch the list height is computed from.
+ *
+ * A row is a name over a protocol badge and an address, inside 16dp of padding, so it
+ * needs more than the flag tile alone — pinning it to the tile's height clipped the
+ * second line. This is a floor, not a cap: the row may grow, and the list simply
+ * scrolls a little sooner than the estimate suggested.
+ */
+private val SERVER_ROW_HEIGHT = 76.dp
+private val SERVER_ROW_PITCH = 84.dp
 
 /**
  * Server chooser shown by the home screen's server card.
@@ -95,7 +103,7 @@ fun ServerPickerSheet(
 
     val listHeight = remember(filtered.size, maxListHeight) {
         val rows = filtered.size.coerceAtLeast(1)
-        val exact = SERVER_ROW_HEIGHT * rows + FandoghSpace.sm * (rows - 1)
+        val exact = SERVER_ROW_PITCH * rows
         minOf(exact, maxListHeight)
     }
 
@@ -313,7 +321,7 @@ private fun ServerRow(server: PickableServer, selected: Boolean, onClick: () -> 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(SERVER_ROW_HEIGHT)
+            .heightIn(min = SERVER_ROW_HEIGHT)
             .clip(shape)
             .background(
                 if (selected) FandoghColors.AccentBlue.copy(alpha = 0.14f) else FandoghColors.Surface
