@@ -34,6 +34,10 @@ object TrafficTracker {
     private const val KEY_DAY_TAG = "fandogh_traffic_day_tag"
     private const val KEY_DAY_UP = "fandogh_traffic_day_up"
     private const val KEY_DAY_DOWN = "fandogh_traffic_day_down"
+    private const val KEY_HISTORY = "fandogh_traffic_history"
+
+    /** How many finished days the chart looks back over. */
+    private const val HISTORY_DAYS = 7
 
     data class Totals(
         val monthUp: Long = 0,
@@ -140,11 +144,57 @@ object TrafficTracker {
         if (MmkvManager.decodeSettingsString(KEY_MONTH_TAG) != monthTag()) {
             result = result.copy(monthUp = 0, monthDown = 0)
         }
-        if (MmkvManager.decodeSettingsString(KEY_DAY_TAG) != dayTag()) {
+        val storedDay = MmkvManager.decodeSettingsString(KEY_DAY_TAG)
+        if (storedDay != dayTag()) {
+            // The day that just ended is only knowable here, at the moment it rolls
+            // over. Archive it before zeroing, or the chart has nothing to draw.
+            if (!storedDay.isNullOrBlank() && current.todayTotal > 0) {
+                archive(storedDay, current.todayTotal)
+            }
             result = result.copy(todayUp = 0, todayDown = 0)
         }
         return result
     }
+
+    /** One finished day's traffic, oldest first. */
+    data class DayUsage(val label: String, val bytes: Long)
+
+    private fun archive(dayTag: String, bytes: Long) {
+        val entries = readHistory().toMutableList()
+        entries.removeAll { it.first == dayTag }
+        entries.add(dayTag to bytes)
+        while (entries.size > HISTORY_DAYS) entries.removeAt(0)
+        MmkvManager.encodeSettings(
+            KEY_HISTORY,
+            entries.joinToString(";") { "${it.first}=${it.second}" }
+        )
+    }
+
+    private fun readHistory(): List<Pair<String, Long>> =
+        MmkvManager.decodeSettingsString(KEY_HISTORY)
+            .orEmpty()
+            .split(';')
+            .mapNotNull { entry ->
+                val parts = entry.split('=', limit = 2)
+                if (parts.size != 2) return@mapNotNull null
+                val bytes = parts[1].toLongOrNull() ?: return@mapNotNull null
+                parts[0] to bytes
+            }
+
+    /**
+     * The last [HISTORY_DAYS] days including today.
+     *
+     * Today comes from the live totals rather than the archive, since it has not been
+     * archived yet — it is still being counted.
+     */
+    fun history(today: Totals): List<DayUsage> {
+        val archived = readHistory().takeLast(HISTORY_DAYS - 1)
+        return (archived.map { DayUsage(shortLabel(it.first), it.second) } +
+                DayUsage(shortLabel(dayTag()), today.todayTotal))
+    }
+
+    /** "2026-8-25" to "25" — the chart has no room for more and the order carries the rest. */
+    private fun shortLabel(tag: String): String = tag.substringAfterLast('-')
 }
 
 /** Formats a byte count the way the Stats screen shows it: "219.4 MB", "5.0 GB". */

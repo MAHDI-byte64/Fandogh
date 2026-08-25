@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
  */
 object SubscriptionUsageRepository {
 
+    private const val BASE64_PREFIX = "base64:"
     private const val HEADER_USERINFO = "subscription-userinfo"
     private const val HEADER_TITLE = "profile-title"
     private const val HEADER_ANNOUNCE = "announce"
@@ -74,8 +75,14 @@ object SubscriptionUsageRepository {
      * text is taken; anything else is treated as already-plain text.
      */
     internal fun decodeMaybeBase64(raw: String): String {
-        val trimmed = raw.trim()
+        var trimmed = raw.trim()
         if (trimmed.isEmpty()) return ""
+        // 3x-ui marks an encoded header by prefixing it, and the prefix is not itself
+        // part of the payload — decoding it along with the rest fails, which is what
+        // left the raw "base64:..." string on screen.
+        if (trimmed.startsWith(BASE64_PREFIX, ignoreCase = true)) {
+            trimmed = trimmed.removeRange(0, BASE64_PREFIX.length).trim()
+        }
         val decoded = runCatching {
             String(Base64.decode(trimmed, Base64.DEFAULT or Base64.URL_SAFE), Charsets.UTF_8)
         }.getOrNull()

@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,11 +126,19 @@ fun ProfileTab(
         )
 
         Spacer(Modifier.height(22.dp))
-        QuotaCard(
+        AccountHero(
             usage = state.usage,
             localUsedBytes = state.localUsedBytes,
+            connected = state.connected,
             busy = state.busy,
             onRefresh = onRefreshUsage
+        )
+
+        Spacer(Modifier.height(16.dp))
+        AccountDetails(
+            usage = state.usage,
+            subscriptionUrl = state.savedSubscriptionUrl,
+            serverCount = state.serverCount
         )
 
         // The panel's announcement is the operator talking to their users; when they
@@ -472,169 +481,318 @@ private fun pluralServers(count: Int): String = when (count) {
     else -> stringResource(R.string.fandogh_server_count, count)
 }
 
+/**
+ * The account at a glance: a ring for a capped plan, the counted figure for an uncapped
+ * one, and the state of the connection.
+ *
+ * A percentage of an unlimited plan is meaningless, so the ring is only drawn when there
+ * is a real allowance to draw against; otherwise the used figure carries the card.
+ */
 @Composable
-private fun QuotaCard(
+private fun AccountHero(
     usage: SubscriptionUsage?,
     localUsedBytes: Long,
+    connected: Boolean,
     busy: Boolean,
     onRefresh: () -> Unit
 ) {
     GlassCard(contentPadding = PaddingValues(22.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = if (usage != null) {
-                        stringResource(R.string.fandogh_plan_active)
-                    } else {
-                        stringResource(R.string.fandogh_plan_unknown)
-                    },
+                    text = stringResource(
+                        if (usage != null) R.string.fandogh_plan_active
+                        else R.string.fandogh_plan_unknown
+                    ),
                     color = FandoghColors.TextPrimary,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = usage?.let { expiryLabel(it.expiryEpochSeconds) }
-                        ?: stringResource(R.string.fandogh_plan_unknown_hint),
-                    color = FandoghColors.TextSecondary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
+                Spacer(Modifier.height(8.dp))
+                StatusBadge(connected)
             }
-            if (busy) {
-                CircularProgressIndicator(
-                    color = FandoghColors.AccentBlueBright,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(24.dp)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(FandoghColors.AccentGreen.copy(alpha = 0.15f))
-                        .border(
-                            BorderStroke(1.dp, FandoghColors.AccentGreen.copy(alpha = 0.4f)),
-                            RoundedCornerShape(13.dp)
-                        )
-                        .clickable(onClick = onRefresh),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("↻", color = FandoghColors.AccentGreen, fontSize = 20.sp)
-                }
-            }
+            RefreshButton(busy = busy, onRefresh = onRefresh)
         }
 
         Spacer(Modifier.height(22.dp))
 
-        if (usage != null && usage.hasQuota) {
-            GaugeBreakdown(
-                fraction = usage.usedFraction,
-                gaugeCenter = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "${(usage.usedFraction * 100).toInt()}%",
-                            color = FandoghColors.TextPrimary,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            stringResource(R.string.fandogh_used).uppercase(),
-                            color = FandoghColors.TextSecondary,
-                            fontSize = 11.sp,
-                            letterSpacing = 1.1.sp
-                        )
-                    }
-                }
-            ) {
-                MetricRow(
-                    label = stringResource(R.string.fandogh_upload),
-                    value = formatBytesLabel(usage.uploadBytes),
-                    accent = FandoghColors.UploadAccent,
-                    markerFilled = false
-                )
-                MetricRow(
-                    label = stringResource(R.string.fandogh_download),
-                    value = formatBytesLabel(usage.downloadBytes),
-                    accent = FandoghColors.DownloadAccent
-                )
-                MetricRow(
-                    label = stringResource(R.string.fandogh_total),
-                    value = formatBytesLabel(usage.totalBytes),
-                    accent = FandoghColors.TextTertiary
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(R.string.fandogh_your_data),
-                    color = FandoghColors.TextSecondary,
-                    fontSize = 15.sp
-                )
-                Text(
-                    text = stringResource(
-                        R.string.fandogh_data_left,
-                        formatBytesLabel(usage.remainingBytes),
-                        formatBytesLabel(usage.totalBytes)
-                    ),
-                    color = FandoghColors.TextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            QuotaBar(fraction = 1f - usage.usedFraction)
-        } else if (usage != null && usage.hasCountedUsage) {
-            // Uncapped plan: there is no allowance to draw a ring against, but the panel
-            // still counted every byte, and that count is what the user came here for.
-            UsageTotal(
-                label = stringResource(R.string.fandogh_panel_usage),
-                value = formatBytesLabel(usage.usedBytes)
-            )
-            Spacer(Modifier.height(18.dp))
-            MetricRow(
-                label = stringResource(R.string.fandogh_upload),
-                value = formatBytesLabel(usage.uploadBytes),
-                accent = FandoghColors.UploadAccent,
-                markerFilled = false
-            )
-            MetricRow(
-                label = stringResource(R.string.fandogh_download),
-                value = formatBytesLabel(usage.downloadBytes),
-                accent = FandoghColors.DownloadAccent
-            )
-            MetricRow(
-                label = stringResource(R.string.fandogh_total),
-                value = stringResource(R.string.fandogh_unlimited),
-                accent = FandoghColors.TextTertiary
-            )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(R.string.fandogh_measured_usage),
-                    color = FandoghColors.TextSecondary,
-                    fontSize = 15.sp
-                )
-                Text(
-                    text = formatBytesLabel(localUsedBytes),
-                    color = FandoghColors.TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+        when {
+            usage != null && usage.hasQuota -> QuotaRing(usage)
+            usage != null && usage.hasCountedUsage -> UncappedUsage(usage)
+            else -> LocalOnlyUsage(localUsedBytes)
         }
     }
 }
+
+@Composable
+private fun QuotaRing(usage: SubscriptionUsage) {
+    GaugeBreakdown(
+        fraction = usage.usedFraction,
+        gaugeCenter = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "${(usage.usedFraction * 100).toInt()}%",
+                    color = FandoghColors.TextPrimary,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.fandogh_used).uppercase(),
+                    color = FandoghColors.TextSecondary,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.1.sp
+                )
+            }
+        }
+    ) {
+        MetricRow(
+            label = stringResource(R.string.fandogh_upload),
+            value = formatBytesLabel(usage.uploadBytes),
+            accent = FandoghColors.UploadAccent,
+            markerFilled = false
+        )
+        MetricRow(
+            label = stringResource(R.string.fandogh_download),
+            value = formatBytesLabel(usage.downloadBytes),
+            accent = FandoghColors.DownloadAccent
+        )
+        MetricRow(
+            label = stringResource(R.string.fandogh_total),
+            value = formatBytesLabel(usage.totalBytes),
+            accent = FandoghColors.TextTertiary
+        )
+    }
+
+    Spacer(Modifier.height(20.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            stringResource(R.string.fandogh_your_data),
+            color = FandoghColors.TextSecondary,
+            fontSize = 15.sp
+        )
+        Text(
+            text = stringResource(
+                R.string.fandogh_data_left,
+                formatBytesLabel(usage.remainingBytes),
+                formatBytesLabel(usage.totalBytes)
+            ),
+            color = FandoghColors.TextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+    Spacer(Modifier.height(10.dp))
+    QuotaBar(fraction = 1f - usage.usedFraction)
+}
+
+@Composable
+private fun UncappedUsage(usage: SubscriptionUsage) {
+    UsageTotal(
+        label = stringResource(R.string.fandogh_panel_usage),
+        value = formatBytesLabel(usage.usedBytes)
+    )
+    Spacer(Modifier.height(18.dp))
+    MetricRow(
+        label = stringResource(R.string.fandogh_upload),
+        value = formatBytesLabel(usage.uploadBytes),
+        accent = FandoghColors.UploadAccent,
+        markerFilled = false
+    )
+    MetricRow(
+        label = stringResource(R.string.fandogh_download),
+        value = formatBytesLabel(usage.downloadBytes),
+        accent = FandoghColors.DownloadAccent
+    )
+    MetricRow(
+        label = stringResource(R.string.fandogh_total),
+        value = stringResource(R.string.fandogh_unlimited),
+        accent = FandoghColors.TextTertiary
+    )
+}
+
+@Composable
+private fun LocalOnlyUsage(localUsedBytes: Long) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            stringResource(R.string.fandogh_measured_usage),
+            color = FandoghColors.TextSecondary,
+            fontSize = 15.sp
+        )
+        Text(
+            text = formatBytesLabel(localUsedBytes),
+            color = FandoghColors.TextPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+/** Pill badge in the sub page's idiom: coloured by state, never by decoration. */
+@Composable
+private fun StatusBadge(connected: Boolean) {
+    val accent = if (connected) FandoghColors.AccentGreen else FandoghColors.TextTertiary
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(accent.copy(alpha = 0.12f))
+            .border(BorderStroke(1.dp, accent.copy(alpha = 0.28f)), shape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(7.dp)
+                .clip(RoundedCornerShape(50))
+                .background(accent)
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = stringResource(
+                if (connected) R.string.fandogh_connected else R.string.fandogh_disconnected
+            ),
+            color = accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun RefreshButton(busy: Boolean, onRefresh: () -> Unit) {
+    if (busy) {
+        CircularProgressIndicator(
+            color = FandoghColors.AccentBlueBright,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(24.dp)
+        )
+        return
+    }
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(FandoghColors.AccentGreen.copy(alpha = 0.15f))
+            .border(
+                BorderStroke(1.dp, FandoghColors.AccentGreen.copy(alpha = 0.4f)),
+                RoundedCornerShape(13.dp)
+            )
+            .clickable(onClick = onRefresh),
+        contentAlignment = Alignment.Center
+    ) {
+        Text("↻", color = FandoghColors.AccentGreen, fontSize = 20.sp)
+    }
+}
+
+/**
+ * The identifying facts about the account, as the panel's own page lists them.
+ *
+ * The subscription id is masked: this screen is the one people screenshot when asking
+ * for help, and the id is the credential.
+ */
+@Composable
+private fun AccountDetails(
+    usage: SubscriptionUsage?,
+    subscriptionUrl: String,
+    serverCount: Int
+) {
+    val subId = remember(subscriptionUrl) { maskedSubscriptionId(subscriptionUrl) }
+
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+        Text(
+            stringResource(R.string.fandogh_account_details),
+            color = FandoghColors.TextPrimary,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(16.dp))
+
+        DetailRow(
+            accent = FandoghColors.AccentBlueBright,
+            label = stringResource(R.string.fandogh_subscription_id),
+            value = subId ?: stringResource(R.string.fandogh_not_set)
+        )
+        DetailRow(
+            accent = FandoghColors.AccentGreen,
+            label = stringResource(R.string.fandogh_servers_count),
+            value = serverCount.toString()
+        )
+        DetailRow(
+            accent = FandoghColors.Warning,
+            label = stringResource(R.string.fandogh_expiry_date),
+            value = usage?.expiryEpochSeconds
+                ?.takeIf { it > 0 }
+                ?.let { formatDate(it) }
+                ?: stringResource(R.string.fandogh_unlimited),
+            last = true
+        )
+    }
+}
+
+@Composable
+private fun DetailRow(accent: Color, label: String, value: String, last: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(accent)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = label,
+            color = FandoghColors.TextSecondary,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = FandoghColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+    if (!last) {
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(FandoghColors.Border)
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * The subscription's own identifier, shortened and masked.
+ *
+ * Anyone holding the full id holds the account, so only enough is shown to tell two
+ * subscriptions apart.
+ */
+private fun maskedSubscriptionId(url: String): String? {
+    val id = url.trim().trimEnd('/').substringAfterLast('/', "")
+    if (id.isBlank()) return null
+    return if (id.length <= 8) id else "${id.take(4)}…${id.takeLast(4)}"
+}
+
+private fun formatDate(epochSeconds: Long): String =
+    SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(Date(epochSeconds * 1000))
 
 @Composable
 private fun SubscriptionCard(

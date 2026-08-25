@@ -374,6 +374,20 @@ class FandoghActivity : BaseComponentActivity() {
                             settingsState = settingsState.copy(startOnBoot = it)
                         },
                         onOpenKillSwitch = { openVpnSystemSettings() },
+                        onToggleFilter = { filter, enabled ->
+                            if (ContentFilters.set(filter, enabled)) {
+                                settingsState = settingsState.copy(filters = ContentFilters.read())
+                                if (mainViewModel.uiState.value.isRunning) {
+                                    // Routing is baked into the config the core is
+                                    // already running; it only changes on restart.
+                                    mainViewModel.onAction(MainAction.RestartService)
+                                } else {
+                                    toastSuccess(R.string.toast_success)
+                                }
+                            } else {
+                                toastError(R.string.fandogh_filter_needs_iran_rules)
+                            }
+                        },
                         onOpenPerApp = {
                             startActivity(Intent(context, PerAppProxyActivity::class.java))
                         },
@@ -622,6 +636,7 @@ class FandoghActivity : BaseComponentActivity() {
         shareOverWifi = MmkvManager.decodeSettingsBool(AppConfig.PREF_PROXY_SHARING),
         showSpeedNotification = MmkvManager.decodeSettingsBool(AppConfig.PREF_SPEED_ENABLED),
         startOnBoot = MmkvManager.decodeStartOnBoot(),
+        filters = ContentFilters.read(),
         perAppEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_PER_APP_PROXY),
         perAppCount = MmkvManager.decodeSettingsStringSet(AppConfig.PREF_PER_APP_PROXY_SET)?.size ?: 0,
         appVersion = BuildConfig.VERSION_NAME

@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +54,9 @@ data class PickableServer(
     val address: String,
     val delayMillis: Long
 )
+
+/** Flag tile plus its padding. Fixed so the list height can be computed, not measured. */
+private val SERVER_ROW_HEIGHT = 72.dp
 
 /**
  * Server chooser shown by the home screen's server card.
@@ -78,12 +82,21 @@ fun ServerPickerSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var query by remember { mutableStateOf("") }
 
+    // Screen-derived, so it never depends on what the list measures to.
+    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
+
     val filtered = remember(servers, query) {
         val q = query.trim()
         if (q.isEmpty()) servers
         else servers.filter {
             it.name.contains(q, ignoreCase = true) || it.address.contains(q, ignoreCase = true)
         }
+    }
+
+    val listHeight = remember(filtered.size, maxListHeight) {
+        val rows = filtered.size.coerceAtLeast(1)
+        val exact = SERVER_ROW_HEIGHT * rows + FandoghSpace.sm * (rows - 1)
+        minOf(exact, maxListHeight)
     }
 
     ModalBottomSheet(
@@ -188,8 +201,14 @@ fun ServerPickerSheet(
             when {
                 servers.isEmpty() -> EmptyServers(onAddSubscription)
                 filtered.isEmpty() -> NoMatches(query)
+                // Deliberately an exact height rather than heightIn(max): a lazy list
+                // that wraps its content inside a bottom sheet feeds its measured height
+                // back into the sheet, which resizes, which changes how many rows are
+                // visible — the sheet then hunts up and down instead of settling. Rows
+                // are a fixed height, so the total can be computed outright and the
+                // sheet has nothing left to chase.
                 else -> LazyColumn(
-                    modifier = Modifier.heightIn(max = 440.dp),
+                    modifier = Modifier.height(listHeight),
                     verticalArrangement = Arrangement.spacedBy(FandoghSpace.sm)
                 ) {
                     items(filtered, key = { it.guid }) { server ->
@@ -294,6 +313,7 @@ private fun ServerRow(server: PickableServer, selected: Boolean, onClick: () -> 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(SERVER_ROW_HEIGHT)
             .clip(shape)
             .background(
                 if (selected) FandoghColors.AccentBlue.copy(alpha = 0.14f) else FandoghColors.Surface
