@@ -37,7 +37,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,15 +54,13 @@ data class PickableServer(
 )
 
 /**
- * A row's minimum height, and the pitch the list height is computed from.
+ * A row's minimum height.
  *
- * A row is a name over a protocol badge and an address, inside 16dp of padding, so it
+ * A row is a name over a protocol badge and an address inside 16dp of padding, so it
  * needs more than the flag tile alone — pinning it to the tile's height clipped the
- * second line. This is a floor, not a cap: the row may grow, and the list simply
- * scrolls a little sooner than the estimate suggested.
+ * second line. A floor rather than a fixed size, so a long name can still grow.
  */
 private val SERVER_ROW_HEIGHT = 76.dp
-private val SERVER_ROW_PITCH = 84.dp
 
 /**
  * Server chooser shown by the home screen's server card.
@@ -94,15 +91,6 @@ fun ServerPickerSheet(
     var selectedTab by remember(tabs) { mutableStateOf<ServerTabs.Tab>(ServerTabs.Tab.All) }
     val shown = remember(servers, selectedTab) { ServerTabs.filter(servers, selectedTab) }
 
-    // Screen-derived, so it never depends on what the list measures to.
-    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
-
-    val listHeight = remember(shown.size, maxListHeight) {
-        val rows = shown.size.coerceAtLeast(1)
-        val exact = SERVER_ROW_PITCH * rows
-        minOf(exact, maxListHeight)
-    }
-
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -129,84 +117,92 @@ fun ServerPickerSheet(
             }
         }
     ) {
-        Column(Modifier.padding(horizontal = FandoghSpace.xl)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.fandogh_change_profile),
-                        color = FandoghColors.TextPrimary,
-                        fontSize = 23.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        stringResource(R.string.fandogh_server_count, shown.size),
-                        color = FandoghColors.TextSecondary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-                if (servers.isNotEmpty()) {
-                    Spacer(Modifier.width(FandoghSpace.md))
-                    PillAction(
-                        // Showing the remaining count is what makes a slow batch read as
-                        // "working" rather than "ignored me".
-                        label = when {
-                            testing && progressText.isNotBlank() -> progressText
-                            testing -> stringResource(R.string.fandogh_testing)
-                            else -> stringResource(R.string.fandogh_test_all)
-                        },
-                        accent = FandoghColors.AccentGreen,
-                        enabled = !testing,
-                        onClick = { onTestAll(shown) }
-                    )
-                }
-            }
-
-            // Most people do not want to read a latency table, they want the best one.
-            if (shown.size > 1) {
-                Spacer(Modifier.height(FandoghSpace.lg))
-                AutoSelectRow(enabled = !testing, onClick = { onAutoSelect(shown) })
-            }
-
-            // Only worth showing when there is more than one bucket to move between.
-            if (tabs.size > 1) {
-                Spacer(Modifier.height(FandoghSpace.lg))
-                TabStrip(
-                    tabs = tabs,
-                    selected = selectedTab,
-                    onSelect = { selectedTab = it }
-                )
-            }
-
-            Spacer(Modifier.height(FandoghSpace.lg))
-
-            when {
-                servers.isEmpty() -> EmptyServers(onAddSubscription)
-                // Deliberately an exact height rather than heightIn(max): a lazy list
-                // that wraps its content inside a bottom sheet feeds its measured height
-                // back into the sheet, which resizes, which changes how many rows are
-                // visible — the sheet then hunts up and down instead of settling. Rows
-                // are a fixed height, so the total can be computed outright and the
-                // sheet has nothing left to chase.
-                else -> LazyColumn(
-                    modifier = Modifier.height(listHeight),
-                    verticalArrangement = Arrangement.spacedBy(FandoghSpace.sm)
+        // One lazy list for the whole sheet, header and tabs included, rather than a
+        // lazy list nested inside the sheet's own scrolling column. Nesting the two
+        // makes them fight over the same drag: the sheet resizes, the list re-measures,
+        // and the sheet hunts up and down without ever settling. A single scrollable
+        // region has nothing to fight with, and it is the arrangement ModalBottomSheet
+        // is built for.
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(
+                start = FandoghSpace.xl,
+                end = FandoghSpace.xl,
+                bottom = FandoghSpace.xxl
+            ),
+            verticalArrangement = Arrangement.spacedBy(FandoghSpace.sm)
+        ) {
+            item(key = "header") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(shown, key = { it.guid }) { server ->
-                        ServerRow(
-                            server = server,
-                            selected = server.guid == selectedGuid,
-                            onClick = { onSelect(server.guid) }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.fandogh_change_profile),
+                            color = FandoghColors.TextPrimary,
+                            fontSize = 23.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (shown.size == 1) {
+                                stringResource(R.string.fandogh_one_server)
+                            } else {
+                                stringResource(R.string.fandogh_server_count, shown.size)
+                            },
+                            color = FandoghColors.TextSecondary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    if (servers.isNotEmpty()) {
+                        Spacer(Modifier.width(FandoghSpace.md))
+                        PillAction(
+                            // Showing the remaining count is what makes a slow batch read
+                            // as "working" rather than "ignored me".
+                            label = when {
+                                testing && progressText.isNotBlank() -> progressText
+                                testing -> stringResource(R.string.fandogh_testing)
+                                else -> stringResource(R.string.fandogh_test_all)
+                            },
+                            accent = FandoghColors.AccentGreen,
+                            enabled = !testing,
+                            onClick = { onTestAll(shown) }
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.height(FandoghSpace.xxl))
+            // Most people do not want to read a latency table, they want the best one.
+            if (shown.size > 1) {
+                item(key = "auto") {
+                    AutoSelectRow(enabled = !testing, onClick = { onAutoSelect(shown) })
+                }
+            }
+
+            // Only worth showing when there is more than one bucket to move between.
+            if (tabs.size > 1) {
+                item(key = "tabs") {
+                    TabStrip(
+                        tabs = tabs,
+                        selected = selectedTab,
+                        onSelect = { selectedTab = it }
+                    )
+                }
+            }
+
+            if (servers.isEmpty()) {
+                item(key = "empty") { EmptyServers(onAddSubscription) }
+            } else {
+                items(shown, key = { it.guid }) { server ->
+                    ServerRow(
+                        server = server,
+                        selected = server.guid == selectedGuid,
+                        onClick = { onSelect(server.guid) }
+                    )
+                }
+            }
         }
     }
 }
