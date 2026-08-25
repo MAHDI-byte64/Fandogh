@@ -20,18 +20,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,21 +82,12 @@ fun ServerPickerSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var query by remember { mutableStateOf("") }
 
     // Screen-derived, so it never depends on what the list measures to.
     val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
 
-    val filtered = remember(servers, query) {
-        val q = query.trim()
-        if (q.isEmpty()) servers
-        else servers.filter {
-            it.name.contains(q, ignoreCase = true) || it.address.contains(q, ignoreCase = true)
-        }
-    }
-
-    val listHeight = remember(filtered.size, maxListHeight) {
-        val rows = filtered.size.coerceAtLeast(1)
+    val listHeight = remember(servers.size, maxListHeight) {
+        val rows = servers.size.coerceAtLeast(1)
         val exact = SERVER_ROW_PITCH * rows
         minOf(exact, maxListHeight)
     }
@@ -176,39 +161,10 @@ fun ServerPickerSheet(
                 AutoSelectRow(enabled = !testing, onClick = onAutoSelect)
             }
 
-            if (servers.size > 6) {
-                Spacer(Modifier.height(FandoghSpace.lg))
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = {
-                        Text(
-                            stringResource(R.string.fandogh_search_servers),
-                            color = FandoghColors.TextTertiary,
-                            fontSize = 14.sp
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions.Default,
-                    shape = RoundedCornerShape(FandoghRadius.tile),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = FandoghColors.TextPrimary,
-                        unfocusedTextColor = FandoghColors.TextPrimary,
-                        focusedBorderColor = FandoghColors.AccentBlue,
-                        unfocusedBorderColor = FandoghColors.Border,
-                        cursorColor = FandoghColors.AccentBlueBright,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
-                    )
-                )
-            }
-
             Spacer(Modifier.height(FandoghSpace.lg))
 
             when {
                 servers.isEmpty() -> EmptyServers(onAddSubscription)
-                filtered.isEmpty() -> NoMatches(query)
                 // Deliberately an exact height rather than heightIn(max): a lazy list
                 // that wraps its content inside a bottom sheet feeds its measured height
                 // back into the sheet, which resizes, which changes how many rows are
@@ -219,7 +175,7 @@ fun ServerPickerSheet(
                     modifier = Modifier.height(listHeight),
                     verticalArrangement = Arrangement.spacedBy(FandoghSpace.sm)
                 ) {
-                    items(filtered, key = { it.guid }) { server ->
+                    items(servers, key = { it.guid }) { server ->
                         ServerRow(
                             server = server,
                             selected = server.guid == selectedGuid,
@@ -293,23 +249,6 @@ private fun EmptyServers(onAddSubscription: () -> Unit) {
             text = stringResource(R.string.fandogh_go_to_profile),
             onClick = onAddSubscription,
             modifier = Modifier.fillMaxWidth(0.72f)
-        )
-    }
-}
-
-@Composable
-private fun NoMatches(query: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = FandoghSpace.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            stringResource(R.string.fandogh_no_matches, query),
-            color = FandoghColors.TextSecondary,
-            fontSize = 15.sp,
-            textAlign = TextAlign.Center
         )
     }
 }
