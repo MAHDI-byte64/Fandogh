@@ -114,10 +114,7 @@ object TrafficTracker {
         return "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}"
     }
 
-    private fun dayTag(): String {
-        val c = Calendar.getInstance()
-        return "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)}"
-    }
+    private fun dayTag(): String = tagOf(Calendar.getInstance())
 
     private fun load(): Totals {
         val monthMatches = MmkvManager.decodeSettingsString(KEY_MONTH_TAG) == monthTag()
@@ -188,13 +185,24 @@ object TrafficTracker {
      * archived yet — it is still being counted.
      */
     fun history(today: Totals): List<DayUsage> {
-        val archived = readHistory().takeLast(HISTORY_DAYS - 1)
-        return (archived.map { DayUsage(shortLabel(it.first), it.second) } +
-                DayUsage(shortLabel(dayTag()), today.todayTotal))
+        val archived = readHistory().toMap()
+        val calendar = Calendar.getInstance()
+        // Build the axis from the calendar rather than from what happens to be stored:
+        // a fresh install has one day of data, and drawing only that made a single bar
+        // fill the whole chart as though it were a whole week's worth.
+        calendar.add(Calendar.DAY_OF_MONTH, -(HISTORY_DAYS - 1))
+        return (0 until HISTORY_DAYS).map { offset ->
+            val tag = tagOf(calendar)
+            val bytes = if (offset == HISTORY_DAYS - 1) today.todayTotal else archived[tag] ?: 0L
+            calendar.add(Calendar.DAY_OF_MONTH, 1)
+            DayUsage(label = tag.substringAfterLast('-'), bytes = bytes)
+        }
     }
 
-    /** "2026-8-25" to "25" — the chart has no room for more and the order carries the rest. */
-    private fun shortLabel(tag: String): String = tag.substringAfterLast('-')
+    private fun tagOf(c: Calendar): String =
+        "${c.get(Calendar.YEAR)}-${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)}"
+
+
 }
 
 /** Formats a byte count the way the Stats screen shows it: "219.4 MB", "5.0 GB". */
