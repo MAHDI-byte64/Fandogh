@@ -21,8 +21,8 @@ android {
         // Fandogh's own version line, not the upstream v2rayNG numbering it was forked
         // from. Bump versionCode on every public release — Android refuses to install
         // an APK whose versionCode is not greater than the installed one.
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
         splits {
