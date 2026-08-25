@@ -570,6 +570,7 @@
     <string name="fandogh_about_hint">Version and licences</string>
     <string name="fandogh_plan_active">Subscription active</string>
     <string name="fandogh_plan_active_hint">Quota reported by your panel</string>
+    <string name="fandogh_open_in_browser">Open link</string>
     <string name="fandogh_tab_all">All</string>
     <string name="fandogh_tab_tunnel">Tunnel</string>
     <string name="fandogh_continent_europe">Europe</string>

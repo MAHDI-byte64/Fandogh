@@ -81,6 +81,14 @@ private const val KEY_ONBOARDED = "fandogh_onboarded"
 private const val PING_TIMEOUT_MILLIS = 6_000L
 
 /**
+ * Whether this process has already pulled the subscription.
+ *
+ * Process-scoped rather than composition-scoped: the activity recomposes and can be
+ * recreated on rotation, and neither is a new launch from the user's point of view.
+ */
+private val subscriptionSyncedThisLaunch = java.util.concurrent.atomic.AtomicBoolean(false)
+
+/**
  * Fandogh's own front end.
  *
  * It drives the existing [MainViewModel] rather than duplicating connection logic, so
@@ -218,6 +226,26 @@ class FandoghActivity : BaseComponentActivity() {
             // though nothing is wrong with the subscription.
             LaunchedEffect(savedSubscription?.first, uiState.isRunning) {
                 if (savedSubscription != null) SubscriptionUsageRepository.refresh()
+            }
+
+            // Pull the server list once per launch, so a server the operator added or
+            // removed is reflected without the user going to find the update button.
+            // Guarded by a flag rather than the effect key: the key changes whenever the
+            // stored subscription does, and re-importing on every such change would hit
+            // the panel repeatedly for one screen.
+            LaunchedEffect(savedSubscription?.first) {
+                val entry = savedSubscription ?: return@LaunchedEffect
+                if (!subscriptionSyncedThisLaunch.compareAndSet(false, true)) {
+                    return@LaunchedEffect
+                }
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        AngConfigManager.updateConfigViaSub(
+                            SubscriptionCache(entry.first, entry.second)
+                        )
+                    }
+                }
+                mainViewModel.setupGroupTab(forceRefresh = true)
             }
 
             val profile = remember(uiState.selectedGuid) {
@@ -472,10 +500,7 @@ class FandoghActivity : BaseComponentActivity() {
                                         shareText(savedSubscription?.second?.url.orEmpty())
                                     },
                                     onOpenSupport = { openLink(it) },
-                                    onOpenSettings = {
-                                        settingsState = readVpnSettings()
-                                        showSettings = true
-                                    }
+                                    onOpenInBrowser = { openLink(it) }
                                 )
                             } }
                         }

@@ -106,7 +106,7 @@ fun ProfileTab(
     onRefreshUsage: () -> Unit,
     onShareSubscription: () -> Unit,
     onOpenSupport: (String) -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenInBrowser: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -183,10 +183,10 @@ fun ProfileTab(
 
         Spacer(Modifier.height(16.dp))
         QuickActions(
-            canShare = state.savedSubscriptionUrl.isNotBlank(),
+            hasSubscription = state.savedSubscriptionUrl.isNotBlank(),
             onShare = onShareSubscription,
             onRefresh = onRefreshUsage,
-            onSettings = onOpenSettings
+            onOpenInBrowser = { onOpenInBrowser(state.savedSubscriptionUrl) }
         )
 
         AnimatedVisibility(
@@ -418,10 +418,10 @@ private fun StatusDot(connected: Boolean) {
 /** The three things people reach for on this screen, one tap from the bottom of it. */
 @Composable
 private fun QuickActions(
-    canShare: Boolean,
+    hasSubscription: Boolean,
     onShare: () -> Unit,
     onRefresh: () -> Unit,
-    onSettings: () -> Unit
+    onOpenInBrowser: () -> Unit
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         ActionTile(
@@ -430,20 +430,21 @@ private fun QuickActions(
             accent = FandoghColors.AccentBlueBright,
             onClick = onRefresh
         )
-        if (canShare) {
+        // Both act on the stored link, so neither is offered before there is one.
+        if (hasSubscription) {
             ActionTile(
                 modifier = Modifier.weight(1f),
                 label = stringResource(R.string.fandogh_share),
                 accent = FandoghColors.AccentGreen,
                 onClick = onShare
             )
+            ActionTile(
+                modifier = Modifier.weight(1f),
+                label = stringResource(R.string.fandogh_open_in_browser),
+                accent = FandoghColors.Warning,
+                onClick = onOpenInBrowser
+            )
         }
-        ActionTile(
-            modifier = Modifier.weight(1f),
-            label = stringResource(R.string.fandogh_settings),
-            accent = FandoghColors.TextSecondary,
-            onClick = onSettings
-        )
     }
 }
 
