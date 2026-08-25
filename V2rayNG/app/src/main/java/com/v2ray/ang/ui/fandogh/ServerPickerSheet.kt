@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui.fandogh
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,7 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +71,7 @@ fun ServerPickerSheet(
     progressText: String = "",
     onSelect: (String) -> Unit,
     onTestAll: () -> Unit,
+    onAutoSelect: () -> Unit,
     onAddSubscription: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -143,6 +147,12 @@ fun ServerPickerSheet(
                         onClick = onTestAll
                     )
                 }
+            }
+
+            // Most people do not want to read a latency table, they want the best one.
+            if (servers.size > 1) {
+                Spacer(Modifier.height(FandoghSpace.lg))
+                AutoSelectRow(enabled = !testing, onClick = onAutoSelect)
             }
 
             if (servers.size > 6) {
@@ -293,20 +303,12 @@ private fun ServerRow(server: PickableServer, selected: Boolean, onClick: () -> 
             .padding(FandoghSpace.lg),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(FandoghRadius.tile))
-                .background(FandoghColors.SurfaceStrong),
-            contentAlignment = Alignment.Center
-        ) {
-            GlobeGlyph(Modifier.size(20.dp))
-        }
+        ServerFlagTile(serverName = server.name, size = 40.dp)
         Spacer(Modifier.width(FandoghSpace.md))
 
         Column(Modifier.weight(1f)) {
             Text(
-                server.name,
+                remember(server.name) { CountryFlags.stripFlag(server.name) },
                 color = FandoghColors.TextPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -382,5 +384,67 @@ private fun CheckGlyph(modifier: Modifier = Modifier) {
             lineTo(size.width * 0.84f, size.height * 0.24f)
         }
         drawPath(path, FandoghColors.AccentBlueBright, style = stroke)
+    }
+}
+
+/**
+ * One tap for "just give me the best server": tests everything, then connects to
+ * whichever answered fastest.
+ */
+@Composable
+private fun AutoSelectRow(enabled: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(FandoghRadius.tile)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        FandoghColors.AccentBlue.copy(alpha = if (enabled) 0.30f else 0.12f),
+                        FandoghColors.AccentGreen.copy(alpha = if (enabled) 0.26f else 0.10f)
+                    )
+                )
+            )
+            .border(BorderStroke(1.dp, FandoghColors.AccentGreen.copy(alpha = 0.36f)), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = FandoghSpace.lg, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BoltGlyph(Modifier.size(20.dp))
+        Spacer(Modifier.width(FandoghSpace.md))
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.fandogh_auto_select),
+                color = FandoghColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                stringResource(R.string.fandogh_auto_select_hint),
+                color = FandoghColors.TextSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 1.dp)
+            )
+        }
+    }
+}
+
+/** Lightning bolt for the automatic pick. */
+@Composable
+private fun BoltGlyph(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.56f, 0f)
+            lineTo(w * 0.18f, h * 0.56f)
+            lineTo(w * 0.46f, h * 0.56f)
+            lineTo(w * 0.40f, h)
+            lineTo(w * 0.82f, h * 0.40f)
+            lineTo(w * 0.52f, h * 0.40f)
+            close()
+        }
+        drawPath(path, FandoghColors.AccentGreen)
     }
 }

@@ -2,6 +2,10 @@ package com.v2ray.ang.ui.fandogh
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -54,7 +58,9 @@ data class HomeState(
     val downSpeed: Long = 0,
     val upSpeed: Long = 0,
     /** Null while a measurement is in flight, negative when the last one failed. */
-    val latencyMillis: Long? = null
+    val latencyMillis: Long? = null,
+    /** True while a latency probe is outstanding, so the tile can say so. */
+    val pinging: Boolean = false
 )
 
 @Composable
@@ -63,6 +69,7 @@ fun HomeTab(
     onToggle: () -> Unit,
     onOpenSettings: () -> Unit,
     onPickServer: () -> Unit,
+    onPing: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -108,7 +115,7 @@ fun HomeTab(
                 exit = fadeOut(tween(160)) + shrinkVertically(tween(200))
             ) {
                 Column {
-                    LiveTiles(state)
+                    LiveTiles(state, onPing)
                     Spacer(Modifier.height(FandoghSpace.md))
                 }
             }
@@ -250,7 +257,7 @@ private fun formatDuration(seconds: Long): String {
 }
 
 @Composable
-private fun LiveTiles(state: HomeState) {
+private fun LiveTiles(state: HomeState, onPing: () -> Unit) {
     // Samples land every few seconds; easing between them reads as a live meter rather
     // than a counter that lurches.
     val animatedDown by animateFloatAsState(
@@ -288,13 +295,17 @@ private fun LiveTiles(state: HomeState) {
             modifier = Modifier.weight(1f),
             label = stringResource(R.string.fandogh_latency),
             value = when {
+                state.pinging -> "···"
                 latency == null -> "···"
                 latency < 0 -> "—"
                 else -> latency.toString()
             },
             unit = "ms",
-            accent = latencyColor(latency)
-        ) { tint -> PulseGlyph(tint, Modifier.size(18.dp)) }
+            accent = if (state.pinging) FandoghColors.AccentBlueBright else latencyColor(latency),
+            // Tapping re-measures. A stale figure from two minutes ago is the one thing
+            // a latency readout must not quietly keep showing.
+            onClick = onPing
+        ) { tint -> PulseGlyph(tint, Modifier.size(18.dp), animate = state.pinging) }
     }
 }
 
@@ -312,9 +323,14 @@ private fun LiveTile(
     unit: String,
     accent: Color,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
     icon: @Composable (Color) -> Unit
 ) {
-    GlassCard(modifier = modifier, contentPadding = PaddingValues(FandoghSpace.md)) {
+    GlassCard(
+        modifier = modifier,
+        onClick = onClick,
+        contentPadding = PaddingValues(FandoghSpace.md)
+    ) {
         Box(
             Modifier
                 .size(34.dp)
@@ -357,23 +373,15 @@ private fun LiveTile(
 private fun ServerCard(state: HomeState, metrics: FandoghMetrics, onPickServer: () -> Unit) {
     GlassCard(onClick = onPickServer, contentPadding = PaddingValues(FandoghSpace.lg)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(if (metrics.compact) 44.dp else 50.dp)
-                    .clip(RoundedCornerShape(FandoghRadius.tile))
-                    .background(FandoghColors.AccentBlue.copy(alpha = 0.14f))
-                    .border(
-                        BorderStroke(1.dp, FandoghColors.AccentBlue.copy(alpha = 0.32f)),
-                        RoundedCornerShape(FandoghRadius.tile)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                GlobeGlyph(Modifier.size(24.dp))
-            }
+            ServerFlagTile(
+                serverName = state.serverName,
+                size = if (metrics.compact) 44.dp else 50.dp
+            )
             Spacer(Modifier.width(FandoghSpace.lg))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = state.serverName ?: stringResource(R.string.fandogh_no_server),
+                    text = state.serverName?.let { CountryFlags.stripFlag(it) }
+                        ?: stringResource(R.string.fandogh_no_server),
                     color = FandoghColors.TextPrimary,
                     fontSize = metrics.cardTitleSize,
                     fontWeight = FontWeight.Bold,
@@ -485,14 +493,33 @@ private fun TileArrow(down: Boolean, color: Color, modifier: Modifier = Modifier
 
 /** Concentric arcs suggesting a signal probe, used for the latency tile. */
 @Composable
-private fun PulseGlyph(color: Color, modifier: Modifier = Modifier) {
+private fun PulseGlyph(
+    color: Color,
+    modifier: Modifier = Modifier,
+    animate: Boolean = false
+) {
+    // While a probe is running the arcs sweep outwards, so a tap is visibly doing
+    // something even when the result comes back identical to the last one.
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "pulsePhase"
+    )
     Canvas(modifier) {
         val c = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.78f)
         drawCircle(color, radius = size.minDimension * 0.10f, center = c)
-        listOf(0.40f, 0.68f).forEach { scale ->
+        listOf(0.40f, 0.68f).forEachIndexed { index, base ->
+            val scale = if (animate) {
+                val p = (phase + index * 0.5f) % 1f
+                0.30f + p * 0.45f
+            } else {
+                base
+            }
             val r = size.minDimension * scale
             drawArc(
-                color = color,
+                color = if (animate) color.copy(alpha = 1f - ((scale - 0.30f) / 0.45f)) else color,
                 startAngle = 200f,
                 sweepAngle = 140f,
                 useCenter = false,

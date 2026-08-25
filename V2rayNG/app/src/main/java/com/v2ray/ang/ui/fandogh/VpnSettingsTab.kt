@@ -43,6 +43,7 @@ data class VpnSettingsState(
     val attachHttpProxy: Boolean = false,
     val shareOverWifi: Boolean = false,
     val showSpeedNotification: Boolean = false,
+    val startOnBoot: Boolean = false,
     val perAppEnabled: Boolean = false,
     val perAppCount: Int = 0,
     val appVersion: String = ""
@@ -63,6 +64,8 @@ fun VpnSettingsTab(
     onToggleHttpProxy: (Boolean) -> Unit,
     onToggleShareOverWifi: (Boolean) -> Unit,
     onToggleSpeedNotification: (Boolean) -> Unit,
+    onToggleStartOnBoot: (Boolean) -> Unit,
+    onOpenKillSwitch: () -> Unit,
     onOpenPerApp: () -> Unit,
     onOpenAdvanced: () -> Unit,
     onBack: () -> Unit,
@@ -143,6 +146,28 @@ fun VpnSettingsTab(
             subtitle = stringResource(R.string.fandogh_speed_notification_hint),
             checked = state.showSpeedNotification,
             onCheckedChange = onToggleSpeedNotification
+        )
+
+        Spacer(Modifier.height(12.dp))
+        SwitchCard(
+            title = stringResource(R.string.fandogh_start_on_boot),
+            subtitle = stringResource(R.string.fandogh_start_on_boot_hint),
+            checked = state.startOnBoot,
+            onCheckedChange = onToggleStartOnBoot
+        )
+
+        // The kill switch belongs to Android, not to this app: only the system can
+        // hold the tunnel open across app death. All we can do is take the user there.
+        Spacer(Modifier.height(12.dp))
+        NavRow(
+            title = stringResource(R.string.fandogh_kill_switch),
+            subtitle = stringResource(R.string.fandogh_kill_switch_hint),
+            onClick = onOpenKillSwitch,
+            leading = {
+                LeadingTile(FandoghColors.Warning) {
+                    ShieldGlyph(FandoghColors.Warning, filled = true, Modifier.size(20.dp))
+                }
+            }
         )
 
         Spacer(Modifier.height(12.dp))

@@ -46,6 +46,7 @@ object TrafficTracker {
         val lastSampleAt: Long = 0
     ) {
         val monthTotal: Long get() = monthUp + monthDown
+        val todayTotal: Long get() = todayUp + todayDown
         val hasLiveData: Boolean get() = lastSampleAt > 0
     }
 
