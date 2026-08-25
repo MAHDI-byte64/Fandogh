@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui.fandogh
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,7 +27,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,18 +81,24 @@ fun ServerPickerSheet(
     testing: Boolean,
     progressText: String = "",
     onSelect: (String) -> Unit,
-    onTestAll: () -> Unit,
-    onAutoSelect: () -> Unit,
+    // Both act on the visible tab rather than the whole subscription: the tab is a
+    // filter, and testing servers the user cannot see would be surprising.
+    onTestAll: (List<PickableServer>) -> Unit,
+    onAutoSelect: (List<PickableServer>) -> Unit,
     onAddSubscription: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    val tabs = remember(servers) { ServerTabs.tabsFor(servers) }
+    var selectedTab by remember(tabs) { mutableStateOf<ServerTabs.Tab>(ServerTabs.Tab.All) }
+    val shown = remember(servers, selectedTab) { ServerTabs.filter(servers, selectedTab) }
+
     // Screen-derived, so it never depends on what the list measures to.
     val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.52f).dp
 
-    val listHeight = remember(servers.size, maxListHeight) {
-        val rows = servers.size.coerceAtLeast(1)
+    val listHeight = remember(shown.size, maxListHeight) {
+        val rows = shown.size.coerceAtLeast(1)
         val exact = SERVER_ROW_PITCH * rows
         minOf(exact, maxListHeight)
     }
@@ -132,7 +143,7 @@ fun ServerPickerSheet(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        stringResource(R.string.fandogh_server_count, servers.size),
+                        stringResource(R.string.fandogh_server_count, shown.size),
                         color = FandoghColors.TextSecondary,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(top = 2.dp)
@@ -150,15 +161,25 @@ fun ServerPickerSheet(
                         },
                         accent = FandoghColors.AccentGreen,
                         enabled = !testing,
-                        onClick = onTestAll
+                        onClick = { onTestAll(shown) }
                     )
                 }
             }
 
             // Most people do not want to read a latency table, they want the best one.
-            if (servers.size > 1) {
+            if (shown.size > 1) {
                 Spacer(Modifier.height(FandoghSpace.lg))
-                AutoSelectRow(enabled = !testing, onClick = onAutoSelect)
+                AutoSelectRow(enabled = !testing, onClick = { onAutoSelect(shown) })
+            }
+
+            // Only worth showing when there is more than one bucket to move between.
+            if (tabs.size > 1) {
+                Spacer(Modifier.height(FandoghSpace.lg))
+                TabStrip(
+                    tabs = tabs,
+                    selected = selectedTab,
+                    onSelect = { selectedTab = it }
+                )
             }
 
             Spacer(Modifier.height(FandoghSpace.lg))
@@ -175,7 +196,7 @@ fun ServerPickerSheet(
                     modifier = Modifier.height(listHeight),
                     verticalArrangement = Arrangement.spacedBy(FandoghSpace.sm)
                 ) {
-                    items(servers, key = { it.guid }) { server ->
+                    items(shown, key = { it.guid }) { server ->
                         ServerRow(
                             server = server,
                             selected = server.guid == selectedGuid,
@@ -414,4 +435,85 @@ private fun BoltGlyph(modifier: Modifier = Modifier) {
         }
         drawPath(path, FandoghColors.AccentGreen)
     }
+}
+
+/**
+ * Horizontal tab strip over the server list.
+ *
+ * Scrollable rather than evenly divided: the number of tabs depends on how many
+ * continents the subscription covers, and squeezing six labels into the sheet's width
+ * would make each unreadable.
+ */
+@Composable
+private fun TabStrip(
+    tabs: List<ServerTabs.Tab>,
+    selected: ServerTabs.Tab,
+    onSelect: (ServerTabs.Tab) -> Unit
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(FandoghSpace.sm)) {
+        items(tabs, key = { it.toString() }) { tab ->
+            TabChip(
+                label = tabLabel(tab),
+                selected = tab == selected,
+                onClick = { onSelect(tab) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(FandoghRadius.pill)
+    val accent = if (selected) FandoghColors.AccentBlueBright else FandoghColors.TextSecondary
+    val background by animateColorAsState(
+        targetValue = if (selected) {
+            FandoghColors.AccentBlue.copy(alpha = 0.22f)
+        } else {
+            Color.White.copy(alpha = 0.05f)
+        },
+        label = "tabBackground"
+    )
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .background(background)
+            .border(
+                BorderStroke(
+                    1.dp,
+                    if (selected) {
+                        FandoghColors.AccentBlue.copy(alpha = 0.5f)
+                    } else {
+                        FandoghColors.Border
+                    }
+                ),
+                shape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = FandoghSpace.lg, vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = accent,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun tabLabel(tab: ServerTabs.Tab): String = when (tab) {
+    ServerTabs.Tab.All -> stringResource(R.string.fandogh_tab_all)
+    ServerTabs.Tab.Tunnel -> stringResource(R.string.fandogh_tab_tunnel)
+    is ServerTabs.Tab.Region -> stringResource(
+        when (tab.continent) {
+            ServerTabs.Continent.Europe -> R.string.fandogh_continent_europe
+            ServerTabs.Continent.Asia -> R.string.fandogh_continent_asia
+            ServerTabs.Continent.NorthAmerica -> R.string.fandogh_continent_north_america
+            ServerTabs.Continent.SouthAmerica -> R.string.fandogh_continent_south_america
+            ServerTabs.Continent.Africa -> R.string.fandogh_continent_africa
+            ServerTabs.Continent.Oceania -> R.string.fandogh_continent_oceania
+        }
+    )
 }

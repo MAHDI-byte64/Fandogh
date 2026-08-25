@@ -498,12 +498,12 @@ class FandoghActivity : BaseComponentActivity() {
                                 mainViewModel.onAction(MainAction.RestartService)
                             }
                         },
-                        onTestAll = {
+                        onTestAll = { visible ->
                             // Test exactly the servers on screen. Going through the view
                             // model instead meant testing whatever its async group list
                             // happened to hold, which was often nothing at all.
                             val started = pingTest.start(
-                                servers.map { it.guid },
+                                visible.map { it.guid },
                                 uiState.selectedGroupId,
                                 scope
                             )
@@ -511,9 +511,9 @@ class FandoghActivity : BaseComponentActivity() {
                                 context.toastError(R.string.fandogh_test_unavailable)
                             }
                         },
-                        onAutoSelect = {
+                        onAutoSelect = { visible ->
                             val started = pingTest.start(
-                                guids = servers.map { it.guid },
+                                guids = visible.map { it.guid },
                                 groupId = uiState.selectedGroupId,
                                 scope = scope,
                                 autoSelect = true
@@ -521,8 +521,9 @@ class FandoghActivity : BaseComponentActivity() {
                                 // Read the delays back from storage after the batch, not
                                 // from the list captured when the button was pressed —
                                 // that snapshot predates every result.
+                                val visibleGuids = visible.mapTo(HashSet()) { it.guid }
                                 val best = pickableServers(uiState.selectedGroupId)
-                                    .filter { it.delayMillis > 0 }
+                                    .filter { it.guid in visibleGuids && it.delayMillis > 0 }
                                     .minByOrNull { it.delayMillis }
                                 if (best == null) {
                                     context.toastError(R.string.fandogh_no_server_responded)
